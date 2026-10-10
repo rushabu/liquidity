@@ -185,3 +185,107 @@ export async function downloadErrorsCsv(batchIds: string[]): Promise<void> {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/* ------------------------------------------------------------------ gap ladder */
+export type BucketKey = "0-1M" | "1-3M" | "3-12M" | "1-5Y" | ">5Y";
+export type PastDuePolicy = "exclude" | "bucket_0_1m";
+
+export interface LadderRow {
+  currency: string;
+  location: string | null;            // null = currency roll-up across the locations you may see
+  scope: "location" | "currency_total";
+  bucket: BucketKey;
+  bucket_label: string;
+  start_date: string;
+  end_date: string | null;
+  asset_principal: number;
+  asset_cash_at_maturity: number;
+  liability_principal: number;
+  liability_cash_at_maturity: number;
+  net_gap: number;
+  gap_status: "surplus" | "shortfall" | "balanced";
+  asset_count: number;
+  liability_count: number;
+}
+
+export interface LadderResponse {
+  metadata: {
+    as_of_date: string;
+    calculation_date: string;
+    past_due_policy: PastDuePolicy;
+    day_count_basis: number;
+    scope_location: string | null;
+    asset_batch: { id: string; filename: string; rows: number };
+    liability_batch: { id: string; filename: string; rows: number };
+    transactions_read: number;
+    transactions_in_ladder: number;
+    past_due_count: number;
+  };
+  buckets: { key: BucketKey; label: string; start_date: string; end_date: string | null }[];
+  ladder: LadderRow[];
+  warnings: string[];
+  assumptions: string[];
+}
+
+export interface LadderTxn {
+  transaction_id: string;
+  book: "asset" | "liability";
+  entity: string;
+  location: string;
+  customer_id: string;
+  currency: string;
+  amount: number;
+  interest_rate_pct: number;
+  transaction_date: string;
+  maturity_date: string;
+  tenor_days: number;
+  interest_amount: number;
+  cash_at_maturity: number;
+  bucket: BucketKey | null;
+  days_to_maturity: number;
+  past_due: boolean;
+}
+
+export interface LadderTxnPage {
+  total: number;
+  page: number;
+  page_size: number;
+  calculation_date: string;
+  summary: { assets: number; liabilities: number; net_gap: number; currency: string } | null;
+  items: LadderTxn[];
+}
+
+export interface Explanation {
+  transaction_id: string;
+  type: "asset" | "liability";
+  currency: string;
+  location: string;
+  bucket: BucketKey | null;
+  past_due: boolean;
+  status: "in_ladder" | "past_due";
+  interest: number;
+  cash_at_maturity: number;
+  stored_interest_matches_recomputation: boolean;
+  calculation_date: string;
+  steps: { n: number; title: string; working: string; result: string }[];
+}
+
+export interface LadderQuery {
+  calc_date?: string;
+  past_due_policy?: PastDuePolicy;
+}
+export interface LadderTxnQuery extends LadderQuery {
+  currency?: string;
+  location?: string;
+  bucket?: BucketKey | "past_due";
+  type?: "asset" | "liability";
+  sort?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  page_size?: number;
+}
+const q = (o: object) => o as Record<string, string | number | undefined>;
+export const getLadder = (p: LadderQuery = {}) => getJson<LadderResponse>("/api/ladder", q(p));
+export const getLadderTransactions = (p: LadderTxnQuery) => getJson<LadderTxnPage>("/api/ladder/transactions", q(p));
+export const getExplanation = (id: string, p: LadderQuery = {}) =>
+  getJson<Explanation>(`/api/ladder/explain/${encodeURIComponent(id)}`, q(p));

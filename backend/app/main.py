@@ -8,10 +8,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 from .config import get_settings
 from .logging_setup import request_id_var, setup_logging
-from .routers import health, ingest
+from .routers import health, ingest, ladder
 from .services.errors import ApiError
 
 settings = get_settings()
@@ -68,6 +69,16 @@ async def validation_error(_: Request, e: RequestValidationError):
                 {"errors": [{"loc": list(x["loc"]), "msg": x["msg"]} for x in e.errors()]})
 
 
+@app.exception_handler(OperationalError)
+async def database_unavailable(_: Request, e: OperationalError):
+    # connection refused / timed out / dropped: say so instead of a generic 500 (no internals leaked)
+    rid = request_id_var.get()
+    log.error("database unavailable", extra={"error": e.orig.__class__.__name__ if e.orig else "OperationalError"})
+    return _err(503, "DATABASE_UNAVAILABLE",
+                f"The database cannot be reached right now. Try again shortly; quote correlation id {rid} "
+                "if it persists.", {"correlation_id": rid})
+
+
 @app.exception_handler(Exception)
 async def unhandled(_: Request, e: Exception):
     rid = request_id_var.get()
@@ -78,3 +89,4 @@ async def unhandled(_: Request, e: Exception):
 
 app.include_router(health.router)
 app.include_router(ingest.router)
+app.include_router(ladder.router)

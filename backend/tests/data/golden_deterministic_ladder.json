@@ -1,0 +1,1534 @@
+{
+ "meta": {
+  "calculation_date": "2026-10-10",
+  "convention": "calendar months from calculation date, upper edge inclusive (maturity <= calc+1M is 0-1M)",
+  "edges": {
+   "0-1M": "2026-11-10",
+   "1-3M": "2027-01-10",
+   "3-12M": "2027-10-10",
+   "1-5Y": "2031-10-10"
+  },
+  "day_count": "Actual/365 simple interest, interest rounded to 2dp per transaction, cash = amount + interest",
+  "matured_rule": "maturity <= calculation_date is excluded and flagged (none in this dataset)",
+  "rows_included": 1856,
+  "assets_included": 753,
+  "liabilities_included": 1103,
+  "note": "Only rows that pass validation (753 assets, 1103 liabilities). Currencies are never summed."
+ },
+ "by_currency_bucket": [
+  {
+   "currency": "EUR",
+   "bucket": "0-1M",
+   "assets": "162335103.29",
+   "liabilities": "21738567.01",
+   "net_gap": "140596536.28"
+  },
+  {
+   "currency": "EUR",
+   "bucket": "1-3M",
+   "assets": "147512025.86",
+   "liabilities": "127695146.77",
+   "net_gap": "19816879.09"
+  },
+  {
+   "currency": "EUR",
+   "bucket": "3-12M",
+   "assets": "306874052.38",
+   "liabilities": "898708056.39",
+   "net_gap": "-591834004.01"
+  },
+  {
+   "currency": "EUR",
+   "bucket": "1-5Y",
+   "assets": "1329111667.26",
+   "liabilities": "1358022679.03",
+   "net_gap": "-28911011.77"
+  },
+  {
+   "currency": "EUR",
+   "bucket": ">5Y",
+   "assets": "318548570.13",
+   "liabilities": "250616467.55",
+   "net_gap": "67932102.58"
+  },
+  {
+   "currency": "GBP",
+   "bucket": "0-1M",
+   "assets": "101563926.09",
+   "liabilities": "95455896.24",
+   "net_gap": "6108029.85"
+  },
+  {
+   "currency": "GBP",
+   "bucket": "1-3M",
+   "assets": "109211320.11",
+   "liabilities": "281660362.68",
+   "net_gap": "-172449042.57"
+  },
+  {
+   "currency": "GBP",
+   "bucket": "3-12M",
+   "assets": "534991627.70",
+   "liabilities": "859693274.79",
+   "net_gap": "-324701647.09"
+  },
+  {
+   "currency": "GBP",
+   "bucket": "1-5Y",
+   "assets": "877929431.66",
+   "liabilities": "1129619539.23",
+   "net_gap": "-251690107.57"
+  },
+  {
+   "currency": "GBP",
+   "bucket": ">5Y",
+   "assets": "181665176.85",
+   "liabilities": "184991902.41",
+   "net_gap": "-3326725.56"
+  },
+  {
+   "currency": "HKD",
+   "bucket": "0-1M",
+   "assets": "89937914.27",
+   "liabilities": "183443832.56",
+   "net_gap": "-93505918.29"
+  },
+  {
+   "currency": "HKD",
+   "bucket": "1-3M",
+   "assets": "125761648.42",
+   "liabilities": "273566814.03",
+   "net_gap": "-147805165.61"
+  },
+  {
+   "currency": "HKD",
+   "bucket": "3-12M",
+   "assets": "517037501.44",
+   "liabilities": "698356602.04",
+   "net_gap": "-181319100.60"
+  },
+  {
+   "currency": "HKD",
+   "bucket": "1-5Y",
+   "assets": "885131595.71",
+   "liabilities": "1442787457.34",
+   "net_gap": "-557655861.63"
+  },
+  {
+   "currency": "HKD",
+   "bucket": ">5Y",
+   "assets": "325240203.58",
+   "liabilities": "305352038.60",
+   "net_gap": "19888164.98"
+  },
+  {
+   "currency": "SGD",
+   "bucket": "0-1M",
+   "assets": "62184543.23",
+   "liabilities": "93756184.62",
+   "net_gap": "-31571641.39"
+  },
+  {
+   "currency": "SGD",
+   "bucket": "1-3M",
+   "assets": "119935199.95",
+   "liabilities": "325817664.47",
+   "net_gap": "-205882464.52"
+  },
+  {
+   "currency": "SGD",
+   "bucket": "3-12M",
+   "assets": "428352628.47",
+   "liabilities": "671499331.51",
+   "net_gap": "-243146703.04"
+  },
+  {
+   "currency": "SGD",
+   "bucket": "1-5Y",
+   "assets": "772357085.35",
+   "liabilities": "1797824373.76",
+   "net_gap": "-1025467288.41"
+  },
+  {
+   "currency": "SGD",
+   "bucket": ">5Y",
+   "assets": "268120193.10",
+   "liabilities": "308286659.72",
+   "net_gap": "-40166466.62"
+  },
+  {
+   "currency": "USD",
+   "bucket": "0-1M",
+   "assets": "80414008.96",
+   "liabilities": "517502590.78",
+   "net_gap": "-437088581.82"
+  },
+  {
+   "currency": "USD",
+   "bucket": "1-3M",
+   "assets": "11827721.95",
+   "liabilities": "260002527.63",
+   "net_gap": "-248174805.68"
+  },
+  {
+   "currency": "USD",
+   "bucket": "3-12M",
+   "assets": "392202108.83",
+   "liabilities": "992977809.94",
+   "net_gap": "-600775701.11"
+  },
+  {
+   "currency": "USD",
+   "bucket": "1-5Y",
+   "assets": "999122626.86",
+   "liabilities": "4111012086.34",
+   "net_gap": "-3111889459.48"
+  },
+  {
+   "currency": "USD",
+   "bucket": ">5Y",
+   "assets": "269014709.66",
+   "liabilities": "504969867.63",
+   "net_gap": "-235955157.97"
+  }
+ ],
+ "cells": [
+  {
+   "currency": "EUR",
+   "location": "Hong Kong",
+   "bucket": "0-1M",
+   "assets": "0",
+   "liabilities": "1631461.95",
+   "net_gap": "-1631461.95",
+   "n_assets": 0,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "EUR",
+   "location": "Hong Kong",
+   "bucket": "1-3M",
+   "assets": "106738115.11",
+   "liabilities": "32915515.76",
+   "net_gap": "73822599.35",
+   "n_assets": 6,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "EUR",
+   "location": "Hong Kong",
+   "bucket": "3-12M",
+   "assets": "45135764.07",
+   "liabilities": "166648130.64",
+   "net_gap": "-121512366.57",
+   "n_assets": 8,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "EUR",
+   "location": "Hong Kong",
+   "bucket": "1-5Y",
+   "assets": "161484060.28",
+   "liabilities": "201678723.64",
+   "net_gap": "-40194663.36",
+   "n_assets": 17,
+   "n_liabilities": 15
+  },
+  {
+   "currency": "EUR",
+   "location": "Hong Kong",
+   "bucket": ">5Y",
+   "assets": "62535828.31",
+   "liabilities": "33556112.69",
+   "net_gap": "28979715.62",
+   "n_assets": 8,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "EUR",
+   "location": "London",
+   "bucket": "0-1M",
+   "assets": "50081784.76",
+   "liabilities": "12377056.82",
+   "net_gap": "37704727.94",
+   "n_assets": 2,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "EUR",
+   "location": "London",
+   "bucket": "1-3M",
+   "assets": "3760714.30",
+   "liabilities": "5712543.07",
+   "net_gap": "-1951828.77",
+   "n_assets": 1,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "EUR",
+   "location": "London",
+   "bucket": "3-12M",
+   "assets": "62973864.75",
+   "liabilities": "137065701.77",
+   "net_gap": "-74091837.02",
+   "n_assets": 9,
+   "n_liabilities": 8
+  },
+  {
+   "currency": "EUR",
+   "location": "London",
+   "bucket": "1-5Y",
+   "assets": "298366773.05",
+   "liabilities": "222740421.33",
+   "net_gap": "75626351.72",
+   "n_assets": 23,
+   "n_liabilities": 12
+  },
+  {
+   "currency": "EUR",
+   "location": "London",
+   "bucket": ">5Y",
+   "assets": "42407726.09",
+   "liabilities": "109368570.07",
+   "net_gap": "-66960843.98",
+   "n_assets": 4,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "EUR",
+   "location": "New York",
+   "bucket": "0-1M",
+   "assets": "51907826.96",
+   "liabilities": "373288.40",
+   "net_gap": "51534538.56",
+   "n_assets": 2,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "EUR",
+   "location": "New York",
+   "bucket": "1-3M",
+   "assets": "35860697.85",
+   "liabilities": "83652474.65",
+   "net_gap": "-47791776.80",
+   "n_assets": 6,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "EUR",
+   "location": "New York",
+   "bucket": "3-12M",
+   "assets": "58534251.34",
+   "liabilities": "144356246.91",
+   "net_gap": "-85821995.57",
+   "n_assets": 7,
+   "n_liabilities": 15
+  },
+  {
+   "currency": "EUR",
+   "location": "New York",
+   "bucket": "1-5Y",
+   "assets": "311037809.23",
+   "liabilities": "397902743.47",
+   "net_gap": "-86864934.24",
+   "n_assets": 28,
+   "n_liabilities": 15
+  },
+  {
+   "currency": "EUR",
+   "location": "New York",
+   "bucket": ">5Y",
+   "assets": "50002744.15",
+   "liabilities": "42216521.52",
+   "net_gap": "7786222.63",
+   "n_assets": 4,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "EUR",
+   "location": "Paris",
+   "bucket": "0-1M",
+   "assets": "42202004.87",
+   "liabilities": "0",
+   "net_gap": "42202004.87",
+   "n_assets": 2,
+   "n_liabilities": 0
+  },
+  {
+   "currency": "EUR",
+   "location": "Paris",
+   "bucket": "1-3M",
+   "assets": "1152498.60",
+   "liabilities": "5414613.29",
+   "net_gap": "-4262114.69",
+   "n_assets": 1,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "EUR",
+   "location": "Paris",
+   "bucket": "3-12M",
+   "assets": "67346118.23",
+   "liabilities": "209665898.02",
+   "net_gap": "-142319779.79",
+   "n_assets": 10,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "EUR",
+   "location": "Paris",
+   "bucket": "1-5Y",
+   "assets": "168899270.89",
+   "liabilities": "358736682.81",
+   "net_gap": "-189837411.92",
+   "n_assets": 16,
+   "n_liabilities": 21
+  },
+  {
+   "currency": "EUR",
+   "location": "Paris",
+   "bucket": ">5Y",
+   "assets": "101858659.30",
+   "liabilities": "16944371.87",
+   "net_gap": "84914287.43",
+   "n_assets": 4,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "EUR",
+   "location": "Singapore",
+   "bucket": "0-1M",
+   "assets": "18143486.70",
+   "liabilities": "7356759.84",
+   "net_gap": "10786726.86",
+   "n_assets": 1,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "EUR",
+   "location": "Singapore",
+   "bucket": "3-12M",
+   "assets": "72884053.99",
+   "liabilities": "240972079.05",
+   "net_gap": "-168088025.06",
+   "n_assets": 8,
+   "n_liabilities": 13
+  },
+  {
+   "currency": "EUR",
+   "location": "Singapore",
+   "bucket": "1-5Y",
+   "assets": "389323753.81",
+   "liabilities": "176964107.78",
+   "net_gap": "212359646.03",
+   "n_assets": 28,
+   "n_liabilities": 18
+  },
+  {
+   "currency": "EUR",
+   "location": "Singapore",
+   "bucket": ">5Y",
+   "assets": "61743612.28",
+   "liabilities": "48530891.40",
+   "net_gap": "13212720.88",
+   "n_assets": 5,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "GBP",
+   "location": "Hong Kong",
+   "bucket": "0-1M",
+   "assets": "0",
+   "liabilities": "28539574.47",
+   "net_gap": "-28539574.47",
+   "n_assets": 0,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "GBP",
+   "location": "Hong Kong",
+   "bucket": "1-3M",
+   "assets": "32269076.90",
+   "liabilities": "50150502.32",
+   "net_gap": "-17881425.42",
+   "n_assets": 2,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "GBP",
+   "location": "Hong Kong",
+   "bucket": "3-12M",
+   "assets": "111860452.16",
+   "liabilities": "260863734.06",
+   "net_gap": "-149003281.90",
+   "n_assets": 12,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "GBP",
+   "location": "Hong Kong",
+   "bucket": "1-5Y",
+   "assets": "113360433.70",
+   "liabilities": "162892706.13",
+   "net_gap": "-49532272.43",
+   "n_assets": 8,
+   "n_liabilities": 20
+  },
+  {
+   "currency": "GBP",
+   "location": "Hong Kong",
+   "bucket": ">5Y",
+   "assets": "16762020.31",
+   "liabilities": "23480711.59",
+   "net_gap": "-6718691.28",
+   "n_assets": 2,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "GBP",
+   "location": "London",
+   "bucket": "0-1M",
+   "assets": "4026253.81",
+   "liabilities": "0",
+   "net_gap": "4026253.81",
+   "n_assets": 1,
+   "n_liabilities": 0
+  },
+  {
+   "currency": "GBP",
+   "location": "London",
+   "bucket": "1-3M",
+   "assets": "21264436.95",
+   "liabilities": "141976879.99",
+   "net_gap": "-120712443.04",
+   "n_assets": 1,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "GBP",
+   "location": "London",
+   "bucket": "3-12M",
+   "assets": "88411396.16",
+   "liabilities": "121664610.00",
+   "net_gap": "-33253213.84",
+   "n_assets": 12,
+   "n_liabilities": 11
+  },
+  {
+   "currency": "GBP",
+   "location": "London",
+   "bucket": "1-5Y",
+   "assets": "320362997.49",
+   "liabilities": "229030033.14",
+   "net_gap": "91332964.35",
+   "n_assets": 16,
+   "n_liabilities": 19
+  },
+  {
+   "currency": "GBP",
+   "location": "London",
+   "bucket": ">5Y",
+   "assets": "21991283.35",
+   "liabilities": "109895581.19",
+   "net_gap": "-87904297.84",
+   "n_assets": 3,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "GBP",
+   "location": "New York",
+   "bucket": "0-1M",
+   "assets": "58185348.73",
+   "liabilities": "16356810.62",
+   "net_gap": "41828538.11",
+   "n_assets": 4,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "GBP",
+   "location": "New York",
+   "bucket": "1-3M",
+   "assets": "10218342.18",
+   "liabilities": "14096618.46",
+   "net_gap": "-3878276.28",
+   "n_assets": 1,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "GBP",
+   "location": "New York",
+   "bucket": "3-12M",
+   "assets": "182146408.88",
+   "liabilities": "293706784.28",
+   "net_gap": "-111560375.40",
+   "n_assets": 11,
+   "n_liabilities": 16
+  },
+  {
+   "currency": "GBP",
+   "location": "New York",
+   "bucket": "1-5Y",
+   "assets": "164735798.08",
+   "liabilities": "273628881.75",
+   "net_gap": "-108893083.67",
+   "n_assets": 16,
+   "n_liabilities": 25
+  },
+  {
+   "currency": "GBP",
+   "location": "New York",
+   "bucket": ">5Y",
+   "assets": "0",
+   "liabilities": "11915437.43",
+   "net_gap": "-11915437.43",
+   "n_assets": 0,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "GBP",
+   "location": "Paris",
+   "bucket": "0-1M",
+   "assets": "17114078.40",
+   "liabilities": "48309628.36",
+   "net_gap": "-31195549.96",
+   "n_assets": 2,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "GBP",
+   "location": "Paris",
+   "bucket": "1-3M",
+   "assets": "7650842.48",
+   "liabilities": "47164741.49",
+   "net_gap": "-39513899.01",
+   "n_assets": 2,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "GBP",
+   "location": "Paris",
+   "bucket": "3-12M",
+   "assets": "79127040.59",
+   "liabilities": "112265180.99",
+   "net_gap": "-33138140.40",
+   "n_assets": 7,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "GBP",
+   "location": "Paris",
+   "bucket": "1-5Y",
+   "assets": "176717387.44",
+   "liabilities": "371927861.13",
+   "net_gap": "-195210473.69",
+   "n_assets": 11,
+   "n_liabilities": 21
+  },
+  {
+   "currency": "GBP",
+   "location": "Paris",
+   "bucket": ">5Y",
+   "assets": "45869136.65",
+   "liabilities": "13402979.89",
+   "net_gap": "32466156.76",
+   "n_assets": 3,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "GBP",
+   "location": "Singapore",
+   "bucket": "0-1M",
+   "assets": "22238245.15",
+   "liabilities": "2249882.79",
+   "net_gap": "19988362.36",
+   "n_assets": 1,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "GBP",
+   "location": "Singapore",
+   "bucket": "1-3M",
+   "assets": "37808621.60",
+   "liabilities": "28271620.42",
+   "net_gap": "9537001.18",
+   "n_assets": 3,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "GBP",
+   "location": "Singapore",
+   "bucket": "3-12M",
+   "assets": "73446329.91",
+   "liabilities": "71192965.46",
+   "net_gap": "2253364.45",
+   "n_assets": 5,
+   "n_liabilities": 9
+  },
+  {
+   "currency": "GBP",
+   "location": "Singapore",
+   "bucket": "1-5Y",
+   "assets": "102752814.95",
+   "liabilities": "92140057.08",
+   "net_gap": "10612757.87",
+   "n_assets": 9,
+   "n_liabilities": 14
+  },
+  {
+   "currency": "GBP",
+   "location": "Singapore",
+   "bucket": ">5Y",
+   "assets": "97042736.54",
+   "liabilities": "26297192.31",
+   "net_gap": "70745544.23",
+   "n_assets": 9,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "HKD",
+   "location": "Hong Kong",
+   "bucket": "0-1M",
+   "assets": "0",
+   "liabilities": "70035674.15",
+   "net_gap": "-70035674.15",
+   "n_assets": 0,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "HKD",
+   "location": "Hong Kong",
+   "bucket": "1-3M",
+   "assets": "0",
+   "liabilities": "65066390.28",
+   "net_gap": "-65066390.28",
+   "n_assets": 0,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "HKD",
+   "location": "Hong Kong",
+   "bucket": "3-12M",
+   "assets": "157233687.64",
+   "liabilities": "110543441.27",
+   "net_gap": "46690246.37",
+   "n_assets": 9,
+   "n_liabilities": 9
+  },
+  {
+   "currency": "HKD",
+   "location": "Hong Kong",
+   "bucket": "1-5Y",
+   "assets": "145818759.14",
+   "liabilities": "355472378.68",
+   "net_gap": "-209653619.54",
+   "n_assets": 14,
+   "n_liabilities": 19
+  },
+  {
+   "currency": "HKD",
+   "location": "Hong Kong",
+   "bucket": ">5Y",
+   "assets": "162097857.71",
+   "liabilities": "39503208.92",
+   "net_gap": "122594648.79",
+   "n_assets": 5,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "HKD",
+   "location": "London",
+   "bucket": "0-1M",
+   "assets": "0",
+   "liabilities": "10984228.86",
+   "net_gap": "-10984228.86",
+   "n_assets": 0,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "HKD",
+   "location": "London",
+   "bucket": "1-3M",
+   "assets": "67388596.59",
+   "liabilities": "11577491.49",
+   "net_gap": "55811105.10",
+   "n_assets": 3,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "HKD",
+   "location": "London",
+   "bucket": "3-12M",
+   "assets": "96614913.51",
+   "liabilities": "212719024.07",
+   "net_gap": "-116104110.56",
+   "n_assets": 11,
+   "n_liabilities": 13
+  },
+  {
+   "currency": "HKD",
+   "location": "London",
+   "bucket": "1-5Y",
+   "assets": "198722180.41",
+   "liabilities": "281943680.75",
+   "net_gap": "-83221500.34",
+   "n_assets": 16,
+   "n_liabilities": 20
+  },
+  {
+   "currency": "HKD",
+   "location": "London",
+   "bucket": ">5Y",
+   "assets": "10334083.39",
+   "liabilities": "6567503.92",
+   "net_gap": "3766579.47",
+   "n_assets": 2,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "HKD",
+   "location": "New York",
+   "bucket": "0-1M",
+   "assets": "56131705.86",
+   "liabilities": "1716295.60",
+   "net_gap": "54415410.26",
+   "n_assets": 3,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "HKD",
+   "location": "New York",
+   "bucket": "1-3M",
+   "assets": "1997447.65",
+   "liabilities": "44062293.06",
+   "net_gap": "-42064845.41",
+   "n_assets": 1,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "HKD",
+   "location": "New York",
+   "bucket": "3-12M",
+   "assets": "59527815.44",
+   "liabilities": "123365733.27",
+   "net_gap": "-63837917.83",
+   "n_assets": 6,
+   "n_liabilities": 7
+  },
+  {
+   "currency": "HKD",
+   "location": "New York",
+   "bucket": "1-5Y",
+   "assets": "106496957.62",
+   "liabilities": "263744681.38",
+   "net_gap": "-157247723.76",
+   "n_assets": 14,
+   "n_liabilities": 23
+  },
+  {
+   "currency": "HKD",
+   "location": "New York",
+   "bucket": ">5Y",
+   "assets": "85426050.73",
+   "liabilities": "137106099.06",
+   "net_gap": "-51680048.33",
+   "n_assets": 9,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "HKD",
+   "location": "Paris",
+   "bucket": "0-1M",
+   "assets": "2693733.70",
+   "liabilities": "10327339.64",
+   "net_gap": "-7633605.94",
+   "n_assets": 1,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "HKD",
+   "location": "Paris",
+   "bucket": "1-3M",
+   "assets": "56375604.18",
+   "liabilities": "19338571.81",
+   "net_gap": "37037032.37",
+   "n_assets": 1,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "HKD",
+   "location": "Paris",
+   "bucket": "3-12M",
+   "assets": "68612328.01",
+   "liabilities": "115772034.64",
+   "net_gap": "-47159706.63",
+   "n_assets": 5,
+   "n_liabilities": 7
+  },
+  {
+   "currency": "HKD",
+   "location": "Paris",
+   "bucket": "1-5Y",
+   "assets": "219197836.29",
+   "liabilities": "285600338.51",
+   "net_gap": "-66402502.22",
+   "n_assets": 13,
+   "n_liabilities": 18
+  },
+  {
+   "currency": "HKD",
+   "location": "Paris",
+   "bucket": ">5Y",
+   "assets": "7001826.98",
+   "liabilities": "24506777.76",
+   "net_gap": "-17504950.78",
+   "n_assets": 2,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "HKD",
+   "location": "Singapore",
+   "bucket": "0-1M",
+   "assets": "31112474.71",
+   "liabilities": "90380294.31",
+   "net_gap": "-59267819.60",
+   "n_assets": 1,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "HKD",
+   "location": "Singapore",
+   "bucket": "1-3M",
+   "assets": "0",
+   "liabilities": "133522067.39",
+   "net_gap": "-133522067.39",
+   "n_assets": 0,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "HKD",
+   "location": "Singapore",
+   "bucket": "3-12M",
+   "assets": "135048756.84",
+   "liabilities": "135956368.79",
+   "net_gap": "-907611.95",
+   "n_assets": 11,
+   "n_liabilities": 16
+  },
+  {
+   "currency": "HKD",
+   "location": "Singapore",
+   "bucket": "1-5Y",
+   "assets": "214895862.25",
+   "liabilities": "256026378.02",
+   "net_gap": "-41130515.77",
+   "n_assets": 15,
+   "n_liabilities": 12
+  },
+  {
+   "currency": "HKD",
+   "location": "Singapore",
+   "bucket": ">5Y",
+   "assets": "60380384.77",
+   "liabilities": "97668448.94",
+   "net_gap": "-37288064.17",
+   "n_assets": 6,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "SGD",
+   "location": "Hong Kong",
+   "bucket": "0-1M",
+   "assets": "23601891.85",
+   "liabilities": "861489.52",
+   "net_gap": "22740402.33",
+   "n_assets": 3,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "SGD",
+   "location": "Hong Kong",
+   "bucket": "1-3M",
+   "assets": "16800918.42",
+   "liabilities": "94333648.09",
+   "net_gap": "-77532729.67",
+   "n_assets": 2,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "SGD",
+   "location": "Hong Kong",
+   "bucket": "3-12M",
+   "assets": "168529527.85",
+   "liabilities": "69618013.31",
+   "net_gap": "98911514.54",
+   "n_assets": 10,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "SGD",
+   "location": "Hong Kong",
+   "bucket": "1-5Y",
+   "assets": "141636479.98",
+   "liabilities": "273813322.10",
+   "net_gap": "-132176842.12",
+   "n_assets": 11,
+   "n_liabilities": 17
+  },
+  {
+   "currency": "SGD",
+   "location": "Hong Kong",
+   "bucket": ">5Y",
+   "assets": "66388565.68",
+   "liabilities": "67550541.80",
+   "net_gap": "-1161976.12",
+   "n_assets": 5,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "SGD",
+   "location": "London",
+   "bucket": "0-1M",
+   "assets": "7772416.22",
+   "liabilities": "1798364.01",
+   "net_gap": "5974052.21",
+   "n_assets": 1,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "SGD",
+   "location": "London",
+   "bucket": "1-3M",
+   "assets": "7289129.91",
+   "liabilities": "0",
+   "net_gap": "7289129.91",
+   "n_assets": 1,
+   "n_liabilities": 0
+  },
+  {
+   "currency": "SGD",
+   "location": "London",
+   "bucket": "3-12M",
+   "assets": "36743705.28",
+   "liabilities": "87596285.89",
+   "net_gap": "-50852580.61",
+   "n_assets": 5,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "SGD",
+   "location": "London",
+   "bucket": "1-5Y",
+   "assets": "216480645.52",
+   "liabilities": "178715385.49",
+   "net_gap": "37765260.03",
+   "n_assets": 13,
+   "n_liabilities": 19
+  },
+  {
+   "currency": "SGD",
+   "location": "London",
+   "bucket": ">5Y",
+   "assets": "36518161.26",
+   "liabilities": "72172021.45",
+   "net_gap": "-35653860.19",
+   "n_assets": 4,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "SGD",
+   "location": "New York",
+   "bucket": "0-1M",
+   "assets": "3353608.75",
+   "liabilities": "47304052.73",
+   "net_gap": "-43950443.98",
+   "n_assets": 1,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "SGD",
+   "location": "New York",
+   "bucket": "1-3M",
+   "assets": "5317832.48",
+   "liabilities": "61516324.46",
+   "net_gap": "-56198491.98",
+   "n_assets": 2,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "SGD",
+   "location": "New York",
+   "bucket": "3-12M",
+   "assets": "58513126.46",
+   "liabilities": "257710059.82",
+   "net_gap": "-199196933.36",
+   "n_assets": 6,
+   "n_liabilities": 12
+  },
+  {
+   "currency": "SGD",
+   "location": "New York",
+   "bucket": "1-5Y",
+   "assets": "113901676.34",
+   "liabilities": "609155042.92",
+   "net_gap": "-495253366.58",
+   "n_assets": 13,
+   "n_liabilities": 27
+  },
+  {
+   "currency": "SGD",
+   "location": "New York",
+   "bucket": ">5Y",
+   "assets": "19470794.62",
+   "liabilities": "90260401.35",
+   "net_gap": "-70789606.73",
+   "n_assets": 3,
+   "n_liabilities": 9
+  },
+  {
+   "currency": "SGD",
+   "location": "Paris",
+   "bucket": "0-1M",
+   "assets": "1633254.38",
+   "liabilities": "0",
+   "net_gap": "1633254.38",
+   "n_assets": 1,
+   "n_liabilities": 0
+  },
+  {
+   "currency": "SGD",
+   "location": "Paris",
+   "bucket": "1-3M",
+   "assets": "21379811.12",
+   "liabilities": "72974466.36",
+   "net_gap": "-51594655.24",
+   "n_assets": 3,
+   "n_liabilities": 9
+  },
+  {
+   "currency": "SGD",
+   "location": "Paris",
+   "bucket": "3-12M",
+   "assets": "101813285.09",
+   "liabilities": "244519816.65",
+   "net_gap": "-142706531.56",
+   "n_assets": 7,
+   "n_liabilities": 15
+  },
+  {
+   "currency": "SGD",
+   "location": "Paris",
+   "bucket": "1-5Y",
+   "assets": "183781583.48",
+   "liabilities": "251618480.18",
+   "net_gap": "-67836896.70",
+   "n_assets": 15,
+   "n_liabilities": 17
+  },
+  {
+   "currency": "SGD",
+   "location": "Paris",
+   "bucket": ">5Y",
+   "assets": "145742671.54",
+   "liabilities": "0",
+   "net_gap": "145742671.54",
+   "n_assets": 9,
+   "n_liabilities": 0
+  },
+  {
+   "currency": "SGD",
+   "location": "Singapore",
+   "bucket": "0-1M",
+   "assets": "25823372.03",
+   "liabilities": "43792278.36",
+   "net_gap": "-17968906.33",
+   "n_assets": 3,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "SGD",
+   "location": "Singapore",
+   "bucket": "1-3M",
+   "assets": "69147508.02",
+   "liabilities": "96993225.56",
+   "net_gap": "-27845717.54",
+   "n_assets": 3,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "SGD",
+   "location": "Singapore",
+   "bucket": "3-12M",
+   "assets": "62752983.79",
+   "liabilities": "12055155.84",
+   "net_gap": "50697827.95",
+   "n_assets": 7,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "SGD",
+   "location": "Singapore",
+   "bucket": "1-5Y",
+   "assets": "116556700.03",
+   "liabilities": "484522143.07",
+   "net_gap": "-367965443.04",
+   "n_assets": 10,
+   "n_liabilities": 20
+  },
+  {
+   "currency": "SGD",
+   "location": "Singapore",
+   "bucket": ">5Y",
+   "assets": "0",
+   "liabilities": "78303695.12",
+   "net_gap": "-78303695.12",
+   "n_assets": 0,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "USD",
+   "location": "Hong Kong",
+   "bucket": "0-1M",
+   "assets": "15310324.65",
+   "liabilities": "98339903.59",
+   "net_gap": "-83029578.94",
+   "n_assets": 2,
+   "n_liabilities": 10
+  },
+  {
+   "currency": "USD",
+   "location": "Hong Kong",
+   "bucket": "1-3M",
+   "assets": "3172544.37",
+   "liabilities": "26691567.77",
+   "net_gap": "-23519023.40",
+   "n_assets": 1,
+   "n_liabilities": 3
+  },
+  {
+   "currency": "USD",
+   "location": "Hong Kong",
+   "bucket": "3-12M",
+   "assets": "25691568.98",
+   "liabilities": "120912824.85",
+   "net_gap": "-95221255.87",
+   "n_assets": 5,
+   "n_liabilities": 7
+  },
+  {
+   "currency": "USD",
+   "location": "Hong Kong",
+   "bucket": "1-5Y",
+   "assets": "207789611.44",
+   "liabilities": "1192169965.86",
+   "net_gap": "-984380354.42",
+   "n_assets": 12,
+   "n_liabilities": 48
+  },
+  {
+   "currency": "USD",
+   "location": "Hong Kong",
+   "bucket": ">5Y",
+   "assets": "14212658.44",
+   "liabilities": "170381126.68",
+   "net_gap": "-156168468.24",
+   "n_assets": 1,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "USD",
+   "location": "London",
+   "bucket": "0-1M",
+   "assets": "30493523.84",
+   "liabilities": "81965798.61",
+   "net_gap": "-51472274.77",
+   "n_assets": 1,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "USD",
+   "location": "London",
+   "bucket": "1-3M",
+   "assets": "8655177.58",
+   "liabilities": "33203279.61",
+   "net_gap": "-24548102.03",
+   "n_assets": 3,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "USD",
+   "location": "London",
+   "bucket": "3-12M",
+   "assets": "100076760.12",
+   "liabilities": "250590372.24",
+   "net_gap": "-150513612.12",
+   "n_assets": 7,
+   "n_liabilities": 13
+  },
+  {
+   "currency": "USD",
+   "location": "London",
+   "bucket": "1-5Y",
+   "assets": "245114996.35",
+   "liabilities": "585157939.26",
+   "net_gap": "-340042942.91",
+   "n_assets": 12,
+   "n_liabilities": 38
+  },
+  {
+   "currency": "USD",
+   "location": "London",
+   "bucket": ">5Y",
+   "assets": "5397743.09",
+   "liabilities": "40282181.76",
+   "net_gap": "-34884438.67",
+   "n_assets": 2,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "USD",
+   "location": "New York",
+   "bucket": "0-1M",
+   "assets": "10505543.41",
+   "liabilities": "98395271.87",
+   "net_gap": "-87889728.46",
+   "n_assets": 2,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "USD",
+   "location": "New York",
+   "bucket": "1-3M",
+   "assets": "0",
+   "liabilities": "101213258.72",
+   "net_gap": "-101213258.72",
+   "n_assets": 0,
+   "n_liabilities": 1
+  },
+  {
+   "currency": "USD",
+   "location": "New York",
+   "bucket": "3-12M",
+   "assets": "98219485.56",
+   "liabilities": "267080136.53",
+   "net_gap": "-168860650.97",
+   "n_assets": 8,
+   "n_liabilities": 14
+  },
+  {
+   "currency": "USD",
+   "location": "New York",
+   "bucket": "1-5Y",
+   "assets": "190902676.79",
+   "liabilities": "682000312.26",
+   "net_gap": "-491097635.47",
+   "n_assets": 10,
+   "n_liabilities": 39
+  },
+  {
+   "currency": "USD",
+   "location": "New York",
+   "bucket": ">5Y",
+   "assets": "37899050.02",
+   "liabilities": "147778075.67",
+   "net_gap": "-109879025.65",
+   "n_assets": 4,
+   "n_liabilities": 4
+  },
+  {
+   "currency": "USD",
+   "location": "Paris",
+   "bucket": "0-1M",
+   "assets": "24104617.06",
+   "liabilities": "187116547.74",
+   "net_gap": "-163011930.68",
+   "n_assets": 2,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "USD",
+   "location": "Paris",
+   "bucket": "1-3M",
+   "assets": "0",
+   "liabilities": "98894421.53",
+   "net_gap": "-98894421.53",
+   "n_assets": 0,
+   "n_liabilities": 5
+  },
+  {
+   "currency": "USD",
+   "location": "Paris",
+   "bucket": "3-12M",
+   "assets": "73608223.85",
+   "liabilities": "122287984.02",
+   "net_gap": "-48679760.17",
+   "n_assets": 7,
+   "n_liabilities": 12
+  },
+  {
+   "currency": "USD",
+   "location": "Paris",
+   "bucket": "1-5Y",
+   "assets": "206099515.58",
+   "liabilities": "869291200.77",
+   "net_gap": "-663191685.19",
+   "n_assets": 14,
+   "n_liabilities": 37
+  },
+  {
+   "currency": "USD",
+   "location": "Paris",
+   "bucket": ">5Y",
+   "assets": "134803606.74",
+   "liabilities": "2588022.56",
+   "net_gap": "132215584.18",
+   "n_assets": 7,
+   "n_liabilities": 2
+  },
+  {
+   "currency": "USD",
+   "location": "Singapore",
+   "bucket": "0-1M",
+   "assets": "0",
+   "liabilities": "51685068.97",
+   "net_gap": "-51685068.97",
+   "n_assets": 0,
+   "n_liabilities": 6
+  },
+  {
+   "currency": "USD",
+   "location": "Singapore",
+   "bucket": "3-12M",
+   "assets": "94606070.32",
+   "liabilities": "232106492.30",
+   "net_gap": "-137500421.98",
+   "n_assets": 7,
+   "n_liabilities": 12
+  },
+  {
+   "currency": "USD",
+   "location": "Singapore",
+   "bucket": "1-5Y",
+   "assets": "149215826.70",
+   "liabilities": "782392668.19",
+   "net_gap": "-633176841.49",
+   "n_assets": 14,
+   "n_liabilities": 45
+  },
+  {
+   "currency": "USD",
+   "location": "Singapore",
+   "bucket": ">5Y",
+   "assets": "76701651.37",
+   "liabilities": "143940460.96",
+   "net_gap": "-67238809.59",
+   "n_assets": 5,
+   "n_liabilities": 4
+  }
+ ],
+ "boundary_cases": [
+  {
+   "id": "AST-006354",
+   "side": "Asset",
+   "maturity": "2027-01-10",
+   "boundary": "1-3M upper edge 2027-01-10",
+   "expected_bucket": "1-3M"
+  },
+  {
+   "id": "AST-006627",
+   "side": "Asset",
+   "maturity": "2027-01-10",
+   "boundary": "1-3M upper edge 2027-01-10",
+   "expected_bucket": "1-3M"
+  },
+  {
+   "id": "AST-006311",
+   "side": "Asset",
+   "maturity": "2026-11-09",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "AST-006489",
+   "side": "Asset",
+   "maturity": "2027-01-09",
+   "boundary": "1-3M upper edge 2027-01-10",
+   "expected_bucket": "1-3M"
+  },
+  {
+   "id": "AST-006701",
+   "side": "Asset",
+   "maturity": "2026-11-11",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "1-3M"
+  },
+  {
+   "id": "LIA-008302",
+   "side": "Liability",
+   "maturity": "2027-10-10",
+   "boundary": "3-12M upper edge 2027-10-10",
+   "expected_bucket": "3-12M"
+  },
+  {
+   "id": "LIA-008486",
+   "side": "Liability",
+   "maturity": "2026-11-10",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008529",
+   "side": "Liability",
+   "maturity": "2026-11-11",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "1-3M"
+  },
+  {
+   "id": "LIA-008564",
+   "side": "Liability",
+   "maturity": "2026-11-10",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008576",
+   "side": "Liability",
+   "maturity": "2026-11-09",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008585",
+   "side": "Liability",
+   "maturity": "2026-11-09",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008601",
+   "side": "Liability",
+   "maturity": "2026-11-10",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008636",
+   "side": "Liability",
+   "maturity": "2026-11-10",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008638",
+   "side": "Liability",
+   "maturity": "2026-11-09",
+   "boundary": "0-1M upper edge 2026-11-10",
+   "expected_bucket": "0-1M"
+  },
+  {
+   "id": "LIA-008822",
+   "side": "Liability",
+   "maturity": "2027-10-11",
+   "boundary": "3-12M upper edge 2027-10-10",
+   "expected_bucket": "1-5Y"
+  }
+ ]
+}

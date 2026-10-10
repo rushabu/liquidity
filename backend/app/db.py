@@ -20,10 +20,11 @@ def sqlalchemy_url(url: str) -> str:
 def get_engine() -> Engine:
     # prepare_threshold=None: server-side prepared statements are not
     # supported by Supabase's transaction pooler (port 6543); harmless elsewhere.
+    s = get_settings()
     return create_engine(
-        sqlalchemy_url(get_settings().database_url),
+        sqlalchemy_url(s.database_url),
         pool_pre_ping=True, pool_size=5, max_overflow=5,
-        connect_args={"prepare_threshold": None},
+        connect_args={"prepare_threshold": None, "connect_timeout": s.db_connect_timeout},
     )
 
 

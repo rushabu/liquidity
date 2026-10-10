@@ -122,3 +122,42 @@ td.value { font-family: var(--font-mono); overflow-wrap: anywhere; max-width: 26
   .datebox { min-width: 0; width: 100%; }
   .strip .btn { width: 100%; }
 }
+
+/* ---------- gap ladder ---------- */
+.gapchart { margin: 0 0 var(--space-5); }
+.gapchart-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3) var(--space-5); margin-bottom: var(--space-3); }
+.gapchart-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.gapchart-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--ink); }
+.gapchart-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.gapchart-legend small { color: var(--muted); font-size: 12px; }
+.gapchart-legend .key { width: 12px; height: 12px; border-radius: 3px; }
+.gapchart .tone[data-tone="surplus"] { color: var(--success); fill: var(--success); }
+.gapchart .tone[data-tone="shortfall"] { color: var(--error); fill: var(--error); }
+.gapchart .tone[data-tone="balanced"] { color: var(--muted); fill: var(--muted); }
+.gapchart-plot { position: relative; width: 100%; }
+.gapchart-plot svg { display: block; width: 100%; height: auto; overflow: visible; }
+.gapchart-tick { font-size: 11.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.gapchart-cat { font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+.gapchart-rowlabel { font-size: 11.5px; fill: var(--muted); }
+.gapchart-net { font-family: var(--font-mono); font-size: 12px; fill: var(--ink); }
+.gapchart-net[data-stacked] { font-size: 10.5px; }
+.gapchart-band { fill: var(--page); }
+.gapchart-hit { fill: transparent; }
+.gapchart-hit[data-clickable] { cursor: pointer; }
+.gapchart-tip { position: absolute; z-index: 2; pointer-events: none; display: grid; gap: 6px; padding: var(--space-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(16, 27, 45, 0.12); font-size: 12.5px; }
+.gapchart-tip .tip-title { display: grid; gap: 1px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.gapchart-tip .tip-title span, .gapchart-tip .tip-row span:last-child, .gapchart-tip .tip-hint { color: var(--muted); font-size: 12px; }
+.gapchart-tip .tip-row { display: grid; grid-template-columns: 14px auto 1fr; align-items: center; column-gap: 8px; }
+.gapchart-tip .tip-row i { width: 12px; height: 3px; border-radius: 2px; }
+.gapchart-tip .tip-row b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.gapchart-tip .tip-row.net { padding-top: 6px; border-top: 1px solid var(--border); }
+.gapchart-tip .tip-row span:last-child { text-align: right; white-space: nowrap; }
+.explain .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3); counter-reset: s; }
+.explain .steps li { display: grid; gap: 2px; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.explain .steps code { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.explain .step-result { font-family: var(--font-mono); font-weight: 600; }
+details.card summary { cursor: pointer; }
+details.card ul { margin: var(--space-3) 0 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); color: var(--muted); font-size: 13.5px; }
+.filters [role="tab"] { min-height: 36px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+td.mono { white-space: nowrap; }

@@ -18,7 +18,7 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 def migrate(database_url: str | None = None, migrations_dir: Path = MIGRATIONS_DIR) -> list[str]:
     url = database_url or get_settings().database_url
     applied: list[str] = []
-    with psycopg.connect(url, autocommit=True, prepare_threshold=None) as conn:
+    with psycopg.connect(url, autocommit=True, prepare_threshold=None, connect_timeout=10) as conn:
         conn.execute("create table if not exists schema_migrations "
                      "(name text primary key, applied_at timestamptz not null default now())")
         done = {r[0] for r in conn.execute("select name from schema_migrations")}

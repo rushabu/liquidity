@@ -182,12 +182,12 @@ Derived at ingest (asset, liability): `tenor_days`, `interest_amount = amount ×
 ## Tests
 
 ```bash
-# backend: 90 unit tests (no DB) + 37 integration tests (real files, real Postgres)
+# backend: 118 unit tests (no DB) + 53 integration tests (real files, real Postgres)
 cd backend && pip install -r requirements-dev.txt
 export TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/liquid_test   # THROW-AWAY database: it is wiped
 pytest                       # without TEST_DATABASE_URL the integration tests are skipped
 
-# frontend: 51 tests
+# frontend: 60 tests
 cd frontend && npm test && npm run build
 ```
 
@@ -209,5 +209,19 @@ docker-compose.yml  ·  .env.example  ·  backend/.env.example  ·  frontend/.en
 ## Troubleshooting
 
 - `/health/db` is 503 → check `DATABASE_URL` (password encoding, `sslmode=require`), use the **Session pooler** string, and make sure the project is not paused.
+- Every data call returns **503 `DATABASE_UNAVAILABLE`** after ~15 s → the API cannot open a database connection (it gives up after `DB_CONNECT_TIMEOUT` seconds per pooler address instead of hanging). Most often the network blocks ports 5432/6543: run `Test-NetConnection <pooler-host> -Port 5432` (Windows) or `nc -vz <pooler-host> 5432`, and switch to another network or a phone hotspot if it fails.
 - 401 on every call → no token: sign in, or set `DEV_AUTH_BYPASS=true` locally. 403 on upload → the user's `app_metadata.role` is not `support`.
 - Browser shows "Cannot reach the server" → `VITE_API_URL` is wrong, or the API's `CORS_ORIGINS` does not include the page's origin.
+
+
+## Deterministic gap ladder (`/ladder`)
+
+Reads the **active asset + liability snapshot** from Postgres and builds the maturity-gap ladder on request (no cache, no randomness).
+
+- `GET /api/ladder` – buckets 0-1M, 1-3M, 3-12M, 1-5Y, >5Y; net gap = assets − liabilities per currency x location + per-currency roll-up. Params: `as_of_date`, `calc_date` (default = snapshot date), `past_due_policy` (`exclude` | `bucket_0_1m`).
+- `GET /api/ladder/transactions` – drill-down behind any cell (filters, sort, paging; `bucket=past_due`).
+- `GET /api/ladder/explain/{transaction_id}` – six-step working for one transaction.
+- Maths: `backend/app/core/ladder.py` (pure). Interest is the value stored at ingest (`liquidity_core`, ACT/365 half-up). Buckets are calendar months, upper edge inclusive, due-today = 0-1M, past due excluded + listed by default.
+- **Location scoping:** Support sees all; a standard user gets only their JWT `location` (filtered in SQL, roll-ups included); no location -> 403 `LOCATION_NOT_ASSIGNED`.
+- Needs asset + liability for the same date (historical is not required): otherwise 409 `SNAPSHOT_NOT_READY`.
+- Tests: `tests/unit/test_ladder_core.py`, `tests/integration/test_ladder_api.py` (every currency x location x bucket cell checked against `tests/data/golden_deterministic_ladder.json`).

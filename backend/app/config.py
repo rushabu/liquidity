@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     # Supabase pooled Postgres connection string (sslmode=require).
     database_url: str
+    # Seconds per resolved address (the Supabase pooler has several). psycopg's default is 130 s each,
+    # so a blocked port would otherwise hang every request for minutes instead of failing with a 503.
+    db_connect_timeout: int = 5
 
     # Auth: JWT with claims sub / role / location.
     # HS256 shared secret (legacy Supabase projects / the auth module), or

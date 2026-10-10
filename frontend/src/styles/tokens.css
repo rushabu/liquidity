@@ -11,6 +11,12 @@
   --warning-text: #7a4a00;
   --success: #12715b;
 
+  /* chart series (categorical slots 1-2; colour-blind separation and >= 3:1 on --surface validated) */
+  --series-asset: #2a78d6;
+  --series-liability: #eb6834;
+  --grid: #e9edf2;
+  --axis: #b8c0cc;
+
   --radius: 12px;
   --radius-sm: 8px;
   --focus: 0 0 0 3px #ffffff, 0 0 0 5px var(--primary);
