@@ -6,6 +6,9 @@ import { MonthlyChart } from "./MonthlyChart";
 import type { DrillPreset, PageMeta, Shared } from "./types";
 
 const SEVERITY = { high: "error", medium: "warning", low: "success" } as const;
+const KIND: Record<Recommendation["kind"], string> = {
+  fund: "Fund", cover: "Roll over", retain: "Retain", buffer: "Standby", keep_liquid: "Invest short", invest: "Invest",
+};
 
 export function Actions({ items, empty, compact = false }: { items: Recommendation[]; empty: string; compact?: boolean }) {
   if (!items.length) return <p className="empty">{empty}</p>;
@@ -13,7 +16,7 @@ export function Actions({ items, empty, compact = false }: { items: Recommendati
     <ol className="actions">
       {items.map((r) => (
         <li key={`${r.scope}-${r.bucket}-${r.action}`}>
-          <span className="chip" data-tone={SEVERITY[r.severity]}>{r.severity}</span>
+          <span className="chip" data-tone={SEVERITY[r.severity]} title={`${r.severity} priority`}>{KIND[r.kind] ?? r.severity}</span>
           <div>
             <b>{r.action}</b> <span className="meta">{r.scope} · {r.bucket}</span>
             <p>{compact ? r.rationale.split(/(?<=\.)\s/)[0] : r.rationale}</p>

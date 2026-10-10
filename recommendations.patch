@@ -1,0 +1,272 @@
+diff --git a/backend/app/core/behavioral.py b/backend/app/core/behavioral.py
+index 9593d88..bfd68e4 100644
+--- a/backend/app/core/behavioral.py
++++ b/backend/app/core/behavioral.py
+@@ -480,54 +480,99 @@ def simulate(model: Model, rows: Sequence[dict], preds: Sequence[dict], calc_dat
+ 
+ 
+ # ------------------------------------------------------------------------------------- recommendations
++# Short instrument names per bucket: (how to fund a gap there, where to park cash until then)
+ INSTRUMENT = {
+-    "0-1M": ("overnight / 1M interbank or repo funding", "1M money-market placements or overnight reverse repo"),
+-    "1-3M": ("short-term funding (3M CDs or commercial paper)", "3M Treasury bills"),
+-    "3-12M": ("term funding (6–12M deposits or CDs)", "6M Treasury bills or 6–12M term placements"),
+-    "1-5Y": ("medium-term funding (term loans or note issuance)", "1–5Y government bonds or term lending"),
+-    ">5Y": ("long-term funding (senior bond issuance)", "long-dated assets matched to the surplus"),
++    "0-1M": ("repo / interbank", "1M placements"),
++    "1-3M": ("CDs / CP", "3M T-bills"),
++    "3-12M": ("term deposits / CDs", "6M T-bills"),
++    "1-5Y": ("term loans / notes", "1–5Y govt bonds"),
++    ">5Y": ("senior bond issue", "long-dated bonds"),
+ }
++TENOR = {"0-1M": "overnight", "1-3M": "3M", "3-12M": "6–12M", "1-5Y": "1–5Y term", ">5Y": "long-term"}
++SHORT_TERM = ("0-1M", "1-3M")
++_RANK = {"high": 0, "medium": 1, "low": 2}
++
++
++def _when(b: dict) -> str:
++    """Act before the bucket starts: 0-1M is now, later buckets by their first day."""
++    if b["bucket"] == "0-1M":
++        return " now"
++    d = b.get("start_date")
++    return f" by {date.fromisoformat(d):%d %b %Y}" if d else ""
+ 
+ 
+ def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> list[dict]:
+-    """Plain-language actions per bucket from the AI-adjusted gap, its simulated bad case and the change vs
+-    the deterministic view. Rows need: bucket, det_net, ai_net, p5, p_shortfall, ai/det assets/liabilities."""
+-    where = f"{currency}{' · ' + location if location else ''}"
+-    out = []
+-    for b in buckets:
+-        key, ai, p5 = b["bucket"], b["ai_net"], b["p5"]
+-        fund, invest = INSTRUMENT[key]
+-        short_term = key in ("0-1M", "1-3M")
+-        if ai < 0:
+-            text = f"Raise {'short-term' if short_term else 'term'} funding – {currency} {_fmt_amt(-ai)}"
+-            why = f"Expected shortfall of {currency} {_fmt_amt(-ai)} in {key} after behavioural adjustment; use {fund}."
+-            if p5 < ai:
+-                why += f" In the 5% worst simulated outcomes it reaches {currency} {_fmt_amt(-p5)}, so line up headroom."
+-            severity = "high" if short_term else "medium"
+-        elif ai > 0:
+-            text = f"Invest surplus – {currency} {_fmt_amt(ai)} in {invest}"
+-            why = f"Expected surplus of {currency} {_fmt_amt(ai)} in {key}."
+-            severity = "low"
+-            if p5 < 0:
+-                text = f"Keep {key} surplus liquid – {currency} {_fmt_amt(ai)}"
+-                why += (f" But there is a {b['p_shortfall']:.0%} chance of a shortfall (bad case {currency} "
+-                        f"{_fmt_amt(-p5)}), so hold it in {invest} rather than locking it up.")
+-                severity = "medium"
+-        else:
++    """One-line treasury actions from the AI-adjusted (behavioural) gap, read cumulatively like a treasury desk:
++
++    1. a surplus in an earlier bucket is rolled forward to cover a later shortfall (no new money needed);
++    2. whatever is still short is raised externally, with the instrument that fits that bucket, before it starts;
++    3. surplus nobody needs later is invested (or kept liquid when the simulation shows real shortfall risk);
++    4. near-term buckets also get a standby line for the simulated bad case (P5) and a retention action when
++       predicted early deposit withdrawals are what pushes them short.
++
++    Rows need: bucket, det_net, ai_net, ai/det assets/liabilities; optional p5, p_shortfall, start_date."""
++    scope = f"{currency}{' · ' + location if location else ''}"
++    rows = sorted(buckets, key=lambda b: det.BUCKET_KEYS.index(b["bucket"]))
++    money = lambda v: f"{currency} {_fmt_amt(v)}"
++    out: list[dict] = []
++
++    def add(b: dict, kind: str, severity: str, action: str, why: str, amount: float) -> None:
++        out.append({"currency": currency, "location": location, "scope": scope, "bucket": b["bucket"],
++                    "kind": kind, "severity": severity, "action": action, "rationale": why,
++                    "amount": round(amount, 2), "deterministic_net": round(b["det_net"], 2),
++                    "ai_net": round(b["ai_net"], 2)})
++
++    pool: list[list] = []                       # [source row, surplus still unallocated], oldest first
++    for b in rows:
++        key, ai = b["bucket"], b["ai_net"]
++        p5 = b.get("p5")
++        if ai > 0:
++            pool.append([b, ai])
++        elif ai < 0:
++            need = -ai
++            park = INSTRUMENT[det.BUCKET_KEYS[det.BUCKET_KEYS.index(key) - 1]][1] if key != "0-1M" else None
++            for src in pool:                    # 1. roll earlier surplus forward
++                use = min(src[1], need)
++                if use <= 0:
++                    continue
++                src[1] -= use
++                need -= use
++                add(b, "cover", "low", f"Roll {money(use)} of {src[0]['bucket']} surplus into {park} – covers {key} gap",
++                    f"The {src[0]['bucket']} surplus is not needed before {key}, so no new funding is required for this part.",
++                    use)
++                if need <= 0:
++                    break
++            if need > 0:                        # 2. raise the rest
++                add(b, "fund", "high" if key in SHORT_TERM else "medium",
++                    f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
++                    f"AI-adjusted {key} gap is −{money(-ai)} (contractual view {'+' if b['det_net'] >= 0 else '−'}"
++                    f"{money(abs(b['det_net']))})" + (f"; earlier surplus covers {money(-ai - need)}." if -ai - need > 0
++                                                      else "."), need)
++        if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
++            extra = -p5 - max(0.0, -ai)
++            if extra >= max(1.0, 0.05 * abs(p5)):
++                add(b, "buffer", "medium", f"Arrange standby line – {money(extra)} for {key} bad case",
++                    f"In the 5% worst simulated outcomes the {key} gap reaches −{money(-p5)}.", extra)
++        dl = b["ai_liabilities"] - b["det_liabilities"]
++        if ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):   # 4b. retention
++            add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
++                f"Predicted early withdrawals add {money(dl)} of outflows to {key}; see Drill-down for the clients.", dl)
++
++    for src, left in pool:                      # 3. surplus nobody needs later
++        if left <= 0:
+             continue
+-        dl, da = b["ai_liabilities"] - b["det_liabilities"], b["ai_assets"] - b["det_assets"]
+-        moves = []
+-        if abs(dl) >= max(1.0, 0.01 * max(b["ai_liabilities"], b["det_liabilities"])):
+-            moves.append(f"deposit outflows {'up' if dl > 0 else 'down'} {currency} {_fmt_amt(abs(dl))}")
+-        if abs(da) >= max(1.0, 0.01 * max(b["ai_assets"], b["det_assets"])):
+-            moves.append(f"loan repayments {'up' if da > 0 else 'down'} {currency} {_fmt_amt(abs(da))}")
+-        if moves:
+-            why += " Versus the contractual view: " + ", ".join(moves) + " because of predicted early exits."
+-        out.append({"currency": currency, "location": location, "scope": where, "bucket": key, "severity": severity,
+-                    "action": text, "rationale": why, "amount": round(abs(ai), 2),
+-                    "deterministic_net": round(b["det_net"], 2), "ai_net": round(ai, 2)})
+-    rank = {"high": 0, "medium": 1, "low": 2}
+-    out.sort(key=lambda r: (rank[r["severity"]], det.BUCKET_KEYS.index(r["bucket"])))
++        key, p_short, p5 = src["bucket"], src.get("p_shortfall") or 0.0, src.get("p5")
++        if p5 is not None and p5 < 0:           # might turn into a gap: invest one tenor shorter than usual
++            shorter = INSTRUMENT[det.BUCKET_KEYS[max(0, det.BUCKET_KEYS.index(key) - 1)]][1]
++            add(src, "keep_liquid", "medium",
++                f"Invest {key} surplus short – {money(left)} in {shorter} ({p_short:.0%} shortfall risk)",
++                f"Expected surplus, but the bad case is −{money(-p5)}, so do not lock it into {INSTRUMENT[key][1]}.", left)
++        else:
++            add(src, "invest", "low", f"Invest surplus – {money(left)} in {INSTRUMENT[key][1]}",
++                f"Not needed by any later bucket{f'; shortfall risk {p_short:.0%}' if p_short else ''}.", left)
++
++    kinds = ["fund", "retain", "buffer", "keep_liquid", "cover", "invest"]
++    out.sort(key=lambda r: (_RANK[r["severity"]], det.BUCKET_KEYS.index(r["bucket"]), kinds.index(r["kind"])))
+     return out
+ 
+ 
+diff --git a/backend/tests/integration/test_behavioral_api.py b/backend/tests/integration/test_behavioral_api.py
+index e495b1c..f6e301c 100644
+--- a/backend/tests/integration/test_behavioral_api.py
++++ b/backend/tests/integration/test_behavioral_api.py
+@@ -72,6 +72,14 @@ def test_compare_kpis_months_and_buckets_agree(client, loaded):
+     assert k["biggest_gain"]["amount"] == max(m["diff"] for m in months[1:])
+     assert k["deepest_opposite"]["amount"] == min(m["diff"] for m in months[1:])
+     assert c["recommendations"] and c["overview"]
++    for b in c["buckets"]:                      # every AI shortfall is exactly covered: rolled surplus + new funding
++        covered = sum(r["amount"] for r in c["recommendations"]
++                      if r["bucket"] == b["bucket"] and r["kind"] in ("cover", "fund"))
++        assert covered == pytest.approx(max(0.0, -b["ai_net"]), abs=0.05), b["bucket"]
++    surplus = sum(max(0.0, b["ai_net"]) for b in c["buckets"])
++    used = sum(r["amount"] for r in c["recommendations"] if r["kind"] in ("cover", "invest", "keep_liquid"))
++    assert used == pytest.approx(surplus, abs=0.05)                                 # every surplus euro is placed once
++    assert all(len(r["action"]) <= 90 for r in c["recommendations"] + c["overview"])   # one short line each
+     assert js(client, "/api/behavioral/compare", currency="EUR")["buckets"] == c["buckets"]   # fixed seed
+ 
+ 
+diff --git a/backend/tests/unit/test_behavioral_core.py b/backend/tests/unit/test_behavioral_core.py
+index d1a7a73..75bcc29 100644
+--- a/backend/tests/unit/test_behavioral_core.py
++++ b/backend/tests/unit/test_behavioral_core.py
+@@ -219,16 +219,34 @@ def _cell(bucket, ai, det_net=None, p5=None, p_short=0.0, dl=0.0):
+             "ai_assets": 50.0, "det_assets": 50.0}
+ 
+ 
+-def test_recommendations_cover_shortfall_surplus_and_risky_surplus():
++def test_recommendations_roll_surplus_forward_then_fund_the_rest():
+     recs = bm.recommend("EUR", None, [
++        {**_cell("1-3M", -5_000_000), "start_date": "2026-11-10"},
++        _cell("0-1M", 3_000_000),
++        {**_cell("3-12M", -4_000_000), "start_date": "2027-01-10"},
++        _cell("1-5Y", 0.0),
++    ])
++    by = {(r["kind"], r["bucket"]): r for r in recs}
++    assert set(by) == {("cover", "1-3M"), ("fund", "1-3M"), ("fund", "3-12M")}
++    assert by[("cover", "1-3M")]["action"] == "Roll EUR 3.0M of 0-1M surplus into 1M placements – covers 1-3M gap"
++    assert by[("fund", "1-3M")]["action"] == "Raise 3M funding – EUR 2.0M via CDs / CP by 10 Nov 2026"
++    assert by[("fund", "1-3M")]["severity"] == "high" and by[("fund", "3-12M")]["severity"] == "medium"
++    assert by[("fund", "3-12M")]["amount"] == 4_000_000                     # surplus already used up by 1-3M
++    assert [r["kind"] for r in recs] == ["fund", "fund", "cover"]            # most urgent first
++
++
++def test_recommendations_bad_case_retention_and_surplus():
++    recs = bm.recommend("EUR", "Paris", [
+         _cell("0-1M", -5_200_000, det_net=1_000_000, p5=-7_900_000, dl=6_200_000),
+         _cell("3-12M", 3_000_000),
+         _cell(">5Y", 2_000_000, p5=-500_000, p_short=0.2),
+-        _cell("1-3M", 0.0),
+     ])
+-    assert [r["bucket"] for r in recs] == ["0-1M", ">5Y", "3-12M"]
+-    top = recs[0]
+-    assert top["severity"] == "high" and top["action"] == "Raise short-term funding – EUR 5.2M"
+-    assert "7.9M" in top["rationale"] and "deposit outflows up EUR 6.2M" in top["rationale"]
+-    assert recs[1]["action"].startswith("Keep >5Y surplus liquid") and recs[1]["severity"] == "medium"
+-    assert recs[2]["action"].startswith("Invest surplus – EUR 3.0M") and recs[2]["severity"] == "low"
++    by = {r["kind"]: r for r in recs}
++    assert by["fund"]["action"] == "Raise overnight funding – EUR 5.2M via repo / interbank now"
++    assert by["buffer"]["action"] == "Arrange standby line – EUR 2.7M for 0-1M bad case"
++    assert by["retain"]["action"] == "Offer retention to early-withdrawal deposits – EUR 6.2M in 0-1M"
++    assert by["invest"]["action"] == "Invest surplus – EUR 3.0M in 6M T-bills" and by["invest"]["severity"] == "low"
++    assert by["keep_liquid"]["action"] == "Invest >5Y surplus short – EUR 2.0M in 1–5Y govt bonds (20% shortfall risk)"
++    assert all(r["scope"] == "EUR · Paris" and "\n" not in r["action"] for r in recs)
++    assert recs[0]["kind"] == "fund"
++    assert bm.recommend("EUR", None, [_cell(k, 0.0) for k in ("0-1M", "1-3M")]) == []
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index e13b665..355369e 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -374,6 +374,9 @@ export interface Recommendation {
+   scope: string;
+   bucket: BucketKey;
+   severity: "high" | "medium" | "low";
++  /** fund = raise money · cover = roll an earlier surplus forward · retain = keep early-withdrawal deposits
++   *  · buffer = standby line for the bad case · keep_liquid / invest = what to do with a surplus */
++  kind: "fund" | "cover" | "retain" | "buffer" | "keep_liquid" | "invest";
+   action: string;
+   rationale: string;
+   amount: number;
+diff --git a/frontend/src/components/ai/CompareView.tsx b/frontend/src/components/ai/CompareView.tsx
+index 5d8063b..18f58b1 100644
+--- a/frontend/src/components/ai/CompareView.tsx
++++ b/frontend/src/components/ai/CompareView.tsx
+@@ -6,6 +6,9 @@ import { MonthlyChart } from "./MonthlyChart";
+ import type { DrillPreset, PageMeta, Shared } from "./types";
+ 
+ const SEVERITY = { high: "error", medium: "warning", low: "success" } as const;
++const KIND: Record<Recommendation["kind"], string> = {
++  fund: "Fund", cover: "Roll over", retain: "Retain", buffer: "Standby", keep_liquid: "Invest short", invest: "Invest",
++};
+ 
+ export function Actions({ items, empty, compact = false }: { items: Recommendation[]; empty: string; compact?: boolean }) {
+   if (!items.length) return <p className="empty">{empty}</p>;
+@@ -13,7 +16,7 @@ export function Actions({ items, empty, compact = false }: { items: Recommendati
+     <ol className="actions">
+       {items.map((r) => (
+         <li key={`${r.scope}-${r.bucket}-${r.action}`}>
+-          <span className="chip" data-tone={SEVERITY[r.severity]}>{r.severity}</span>
++          <span className="chip" data-tone={SEVERITY[r.severity]} title={`${r.severity} priority`}>{KIND[r.kind] ?? r.severity}</span>
+           <div>
+             <b>{r.action}</b> <span className="meta">{r.scope} · {r.bucket}</span>
+             <p>{compact ? r.rationale.split(/(?<=\.)\s/)[0] : r.rationale}</p>
+diff --git a/frontend/src/pages/Behavioral.test.tsx b/frontend/src/pages/Behavioral.test.tsx
+index d91cc21..469d753 100644
+--- a/frontend/src/pages/Behavioral.test.tsx
++++ b/frontend/src/pages/Behavioral.test.tsx
+@@ -28,7 +28,7 @@ const comparison = (currency = "EUR"): client.CompareResponse => ({
+     diff: m === 6 ? -138.8e6 : m ? 1e6 : 0, note: m === 6 ? "Deposits expected to leave earlier." : "x", bucket: m ? (m <= 1 ? "0-1M" : m <= 3 ? "1-3M" : "3-12M") : null })),
+   buckets: B.map((b, i) => ({ bucket: b, label: b, start_date: "2026-10-10", end_date: null, det_assets: 0, det_liabilities: 0, det_net: nets[i][0],
+     ai_assets: 0, ai_liabilities: 0, ai_net: nets[i][1], delta: nets[i][1] - nets[i][0], det_count: 1, ai_count: 1, p5: -1, p50: 0, p95: 1, p_shortfall: 0.5 })),
+-  recommendations: [{ currency: "EUR", location: null, scope: "EUR", bucket: "1-3M", severity: "high", action: "Raise short-term funding – EUR 49.0M",
++  recommendations: [{ currency: "EUR", location: null, scope: "EUR", bucket: "1-3M", severity: "high", kind: "fund", action: "Raise 3M funding – EUR 49.0M via CDs / CP by 11 Nov 2026",
+     rationale: "Expected shortfall. More.", amount: 49e6, deterministic_net: 19.8e6, ai_net: -49e6 }],
+   overview: [], notes: ["note"],
+ });
+@@ -78,7 +78,8 @@ it("Compare shows KPIs, both nets per bucket, the selected month and the actions
+   expect(within(row).getByText("−49.0M")).toBeInTheDocument();
+   expect(screen.getByText(/Selected: month 6/)).toBeInTheDocument();
+   expect(screen.getByText("Deposits expected to leave earlier.", { exact: false })).toBeInTheDocument();
+-  expect(screen.getByText("Raise short-term funding – EUR 49.0M")).toBeInTheDocument();
++  expect(screen.getByText("Raise 3M funding – EUR 49.0M via CDs / CP by 11 Nov 2026")).toBeInTheDocument();
++  expect(screen.getByText("Fund")).toBeInTheDocument();
+   expect(screen.getByText(/−392.4M \(same\)/)).toBeInTheDocument();
+ });
+ 

@@ -28,7 +28,7 @@ const comparison = (currency = "EUR"): client.CompareResponse => ({
     diff: m === 6 ? -138.8e6 : m ? 1e6 : 0, note: m === 6 ? "Deposits expected to leave earlier." : "x", bucket: m ? (m <= 1 ? "0-1M" : m <= 3 ? "1-3M" : "3-12M") : null })),
   buckets: B.map((b, i) => ({ bucket: b, label: b, start_date: "2026-10-10", end_date: null, det_assets: 0, det_liabilities: 0, det_net: nets[i][0],
     ai_assets: 0, ai_liabilities: 0, ai_net: nets[i][1], delta: nets[i][1] - nets[i][0], det_count: 1, ai_count: 1, p5: -1, p50: 0, p95: 1, p_shortfall: 0.5 })),
-  recommendations: [{ currency: "EUR", location: null, scope: "EUR", bucket: "1-3M", severity: "high", action: "Raise short-term funding – EUR 49.0M",
+  recommendations: [{ currency: "EUR", location: null, scope: "EUR", bucket: "1-3M", severity: "high", kind: "fund", action: "Raise 3M funding – EUR 49.0M via CDs / CP by 11 Nov 2026",
     rationale: "Expected shortfall. More.", amount: 49e6, deterministic_net: 19.8e6, ai_net: -49e6 }],
   overview: [], notes: ["note"],
 });
@@ -78,7 +78,8 @@ it("Compare shows KPIs, both nets per bucket, the selected month and the actions
   expect(within(row).getByText("−49.0M")).toBeInTheDocument();
   expect(screen.getByText(/Selected: month 6/)).toBeInTheDocument();
   expect(screen.getByText("Deposits expected to leave earlier.", { exact: false })).toBeInTheDocument();
-  expect(screen.getByText("Raise short-term funding – EUR 49.0M")).toBeInTheDocument();
+  expect(screen.getByText("Raise 3M funding – EUR 49.0M via CDs / CP by 11 Nov 2026")).toBeInTheDocument();
+  expect(screen.getByText("Fund")).toBeInTheDocument();
   expect(screen.getByText(/−392.4M \(same\)/)).toBeInTheDocument();
 });
 

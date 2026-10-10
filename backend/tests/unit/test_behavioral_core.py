@@ -219,16 +219,34 @@ def _cell(bucket, ai, det_net=None, p5=None, p_short=0.0, dl=0.0):
             "ai_assets": 50.0, "det_assets": 50.0}
 
 
-def test_recommendations_cover_shortfall_surplus_and_risky_surplus():
+def test_recommendations_roll_surplus_forward_then_fund_the_rest():
     recs = bm.recommend("EUR", None, [
+        {**_cell("1-3M", -5_000_000), "start_date": "2026-11-10"},
+        _cell("0-1M", 3_000_000),
+        {**_cell("3-12M", -4_000_000), "start_date": "2027-01-10"},
+        _cell("1-5Y", 0.0),
+    ])
+    by = {(r["kind"], r["bucket"]): r for r in recs}
+    assert set(by) == {("cover", "1-3M"), ("fund", "1-3M"), ("fund", "3-12M")}
+    assert by[("cover", "1-3M")]["action"] == "Roll EUR 3.0M of 0-1M surplus into 1M placements – covers 1-3M gap"
+    assert by[("fund", "1-3M")]["action"] == "Raise 3M funding – EUR 2.0M via CDs / CP by 10 Nov 2026"
+    assert by[("fund", "1-3M")]["severity"] == "high" and by[("fund", "3-12M")]["severity"] == "medium"
+    assert by[("fund", "3-12M")]["amount"] == 4_000_000                     # surplus already used up by 1-3M
+    assert [r["kind"] for r in recs] == ["fund", "fund", "cover"]            # most urgent first
+
+
+def test_recommendations_bad_case_retention_and_surplus():
+    recs = bm.recommend("EUR", "Paris", [
         _cell("0-1M", -5_200_000, det_net=1_000_000, p5=-7_900_000, dl=6_200_000),
         _cell("3-12M", 3_000_000),
         _cell(">5Y", 2_000_000, p5=-500_000, p_short=0.2),
-        _cell("1-3M", 0.0),
     ])
-    assert [r["bucket"] for r in recs] == ["0-1M", ">5Y", "3-12M"]
-    top = recs[0]
-    assert top["severity"] == "high" and top["action"] == "Raise short-term funding – EUR 5.2M"
-    assert "7.9M" in top["rationale"] and "deposit outflows up EUR 6.2M" in top["rationale"]
-    assert recs[1]["action"].startswith("Keep >5Y surplus liquid") and recs[1]["severity"] == "medium"
-    assert recs[2]["action"].startswith("Invest surplus – EUR 3.0M") and recs[2]["severity"] == "low"
+    by = {r["kind"]: r for r in recs}
+    assert by["fund"]["action"] == "Raise overnight funding – EUR 5.2M via repo / interbank now"
+    assert by["buffer"]["action"] == "Arrange standby line – EUR 2.7M for 0-1M bad case"
+    assert by["retain"]["action"] == "Offer retention to early-withdrawal deposits – EUR 6.2M in 0-1M"
+    assert by["invest"]["action"] == "Invest surplus – EUR 3.0M in 6M T-bills" and by["invest"]["severity"] == "low"
+    assert by["keep_liquid"]["action"] == "Invest >5Y surplus short – EUR 2.0M in 1–5Y govt bonds (20% shortfall risk)"
+    assert all(r["scope"] == "EUR · Paris" and "\n" not in r["action"] for r in recs)
+    assert recs[0]["kind"] == "fund"
+    assert bm.recommend("EUR", None, [_cell(k, 0.0) for k in ("0-1M", "1-3M")]) == []

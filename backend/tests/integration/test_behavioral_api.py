@@ -72,6 +72,14 @@ def test_compare_kpis_months_and_buckets_agree(client, loaded):
     assert k["biggest_gain"]["amount"] == max(m["diff"] for m in months[1:])
     assert k["deepest_opposite"]["amount"] == min(m["diff"] for m in months[1:])
     assert c["recommendations"] and c["overview"]
+    for b in c["buckets"]:                      # every AI shortfall is exactly covered: rolled surplus + new funding
+        covered = sum(r["amount"] for r in c["recommendations"]
+                      if r["bucket"] == b["bucket"] and r["kind"] in ("cover", "fund"))
+        assert covered == pytest.approx(max(0.0, -b["ai_net"]), abs=0.05), b["bucket"]
+    surplus = sum(max(0.0, b["ai_net"]) for b in c["buckets"])
+    used = sum(r["amount"] for r in c["recommendations"] if r["kind"] in ("cover", "invest", "keep_liquid"))
+    assert used == pytest.approx(surplus, abs=0.05)                                 # every surplus euro is placed once
+    assert all(len(r["action"]) <= 90 for r in c["recommendations"] + c["overview"])   # one short line each
     assert js(client, "/api/behavioral/compare", currency="EUR")["buckets"] == c["buckets"]   # fixed seed
 
 

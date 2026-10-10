@@ -374,6 +374,9 @@ export interface Recommendation {
   scope: string;
   bucket: BucketKey;
   severity: "high" | "medium" | "low";
+  /** fund = raise money · cover = roll an earlier surplus forward · retain = keep early-withdrawal deposits
+   *  · buffer = standby line for the bad case · keep_liquid / invest = what to do with a surplus */
+  kind: "fund" | "cover" | "retain" | "buffer" | "keep_liquid" | "invest";
   action: string;
   rationale: string;
   amount: number;

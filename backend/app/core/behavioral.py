@@ -480,54 +480,99 @@ def simulate(model: Model, rows: Sequence[dict], preds: Sequence[dict], calc_dat
 
 
 # ------------------------------------------------------------------------------------- recommendations
+# Short instrument names per bucket: (how to fund a gap there, where to park cash until then)
 INSTRUMENT = {
-    "0-1M": ("overnight / 1M interbank or repo funding", "1M money-market placements or overnight reverse repo"),
-    "1-3M": ("short-term funding (3M CDs or commercial paper)", "3M Treasury bills"),
-    "3-12M": ("term funding (6–12M deposits or CDs)", "6M Treasury bills or 6–12M term placements"),
-    "1-5Y": ("medium-term funding (term loans or note issuance)", "1–5Y government bonds or term lending"),
-    ">5Y": ("long-term funding (senior bond issuance)", "long-dated assets matched to the surplus"),
+    "0-1M": ("repo / interbank", "1M placements"),
+    "1-3M": ("CDs / CP", "3M T-bills"),
+    "3-12M": ("term deposits / CDs", "6M T-bills"),
+    "1-5Y": ("term loans / notes", "1–5Y govt bonds"),
+    ">5Y": ("senior bond issue", "long-dated bonds"),
 }
+TENOR = {"0-1M": "overnight", "1-3M": "3M", "3-12M": "6–12M", "1-5Y": "1–5Y term", ">5Y": "long-term"}
+SHORT_TERM = ("0-1M", "1-3M")
+_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def _when(b: dict) -> str:
+    """Act before the bucket starts: 0-1M is now, later buckets by their first day."""
+    if b["bucket"] == "0-1M":
+        return " now"
+    d = b.get("start_date")
+    return f" by {date.fromisoformat(d):%d %b %Y}" if d else ""
 
 
 def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> list[dict]:
-    """Plain-language actions per bucket from the AI-adjusted gap, its simulated bad case and the change vs
-    the deterministic view. Rows need: bucket, det_net, ai_net, p5, p_shortfall, ai/det assets/liabilities."""
-    where = f"{currency}{' · ' + location if location else ''}"
-    out = []
-    for b in buckets:
-        key, ai, p5 = b["bucket"], b["ai_net"], b["p5"]
-        fund, invest = INSTRUMENT[key]
-        short_term = key in ("0-1M", "1-3M")
-        if ai < 0:
-            text = f"Raise {'short-term' if short_term else 'term'} funding – {currency} {_fmt_amt(-ai)}"
-            why = f"Expected shortfall of {currency} {_fmt_amt(-ai)} in {key} after behavioural adjustment; use {fund}."
-            if p5 < ai:
-                why += f" In the 5% worst simulated outcomes it reaches {currency} {_fmt_amt(-p5)}, so line up headroom."
-            severity = "high" if short_term else "medium"
-        elif ai > 0:
-            text = f"Invest surplus – {currency} {_fmt_amt(ai)} in {invest}"
-            why = f"Expected surplus of {currency} {_fmt_amt(ai)} in {key}."
-            severity = "low"
-            if p5 < 0:
-                text = f"Keep {key} surplus liquid – {currency} {_fmt_amt(ai)}"
-                why += (f" But there is a {b['p_shortfall']:.0%} chance of a shortfall (bad case {currency} "
-                        f"{_fmt_amt(-p5)}), so hold it in {invest} rather than locking it up.")
-                severity = "medium"
-        else:
+    """One-line treasury actions from the AI-adjusted (behavioural) gap, read cumulatively like a treasury desk:
+
+    1. a surplus in an earlier bucket is rolled forward to cover a later shortfall (no new money needed);
+    2. whatever is still short is raised externally, with the instrument that fits that bucket, before it starts;
+    3. surplus nobody needs later is invested (or kept liquid when the simulation shows real shortfall risk);
+    4. near-term buckets also get a standby line for the simulated bad case (P5) and a retention action when
+       predicted early deposit withdrawals are what pushes them short.
+
+    Rows need: bucket, det_net, ai_net, ai/det assets/liabilities; optional p5, p_shortfall, start_date."""
+    scope = f"{currency}{' · ' + location if location else ''}"
+    rows = sorted(buckets, key=lambda b: det.BUCKET_KEYS.index(b["bucket"]))
+    money = lambda v: f"{currency} {_fmt_amt(v)}"
+    out: list[dict] = []
+
+    def add(b: dict, kind: str, severity: str, action: str, why: str, amount: float) -> None:
+        out.append({"currency": currency, "location": location, "scope": scope, "bucket": b["bucket"],
+                    "kind": kind, "severity": severity, "action": action, "rationale": why,
+                    "amount": round(amount, 2), "deterministic_net": round(b["det_net"], 2),
+                    "ai_net": round(b["ai_net"], 2)})
+
+    pool: list[list] = []                       # [source row, surplus still unallocated], oldest first
+    for b in rows:
+        key, ai = b["bucket"], b["ai_net"]
+        p5 = b.get("p5")
+        if ai > 0:
+            pool.append([b, ai])
+        elif ai < 0:
+            need = -ai
+            park = INSTRUMENT[det.BUCKET_KEYS[det.BUCKET_KEYS.index(key) - 1]][1] if key != "0-1M" else None
+            for src in pool:                    # 1. roll earlier surplus forward
+                use = min(src[1], need)
+                if use <= 0:
+                    continue
+                src[1] -= use
+                need -= use
+                add(b, "cover", "low", f"Roll {money(use)} of {src[0]['bucket']} surplus into {park} – covers {key} gap",
+                    f"The {src[0]['bucket']} surplus is not needed before {key}, so no new funding is required for this part.",
+                    use)
+                if need <= 0:
+                    break
+            if need > 0:                        # 2. raise the rest
+                add(b, "fund", "high" if key in SHORT_TERM else "medium",
+                    f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
+                    f"AI-adjusted {key} gap is −{money(-ai)} (contractual view {'+' if b['det_net'] >= 0 else '−'}"
+                    f"{money(abs(b['det_net']))})" + (f"; earlier surplus covers {money(-ai - need)}." if -ai - need > 0
+                                                      else "."), need)
+        if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
+            extra = -p5 - max(0.0, -ai)
+            if extra >= max(1.0, 0.05 * abs(p5)):
+                add(b, "buffer", "medium", f"Arrange standby line – {money(extra)} for {key} bad case",
+                    f"In the 5% worst simulated outcomes the {key} gap reaches −{money(-p5)}.", extra)
+        dl = b["ai_liabilities"] - b["det_liabilities"]
+        if ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):   # 4b. retention
+            add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
+                f"Predicted early withdrawals add {money(dl)} of outflows to {key}; see Drill-down for the clients.", dl)
+
+    for src, left in pool:                      # 3. surplus nobody needs later
+        if left <= 0:
             continue
-        dl, da = b["ai_liabilities"] - b["det_liabilities"], b["ai_assets"] - b["det_assets"]
-        moves = []
-        if abs(dl) >= max(1.0, 0.01 * max(b["ai_liabilities"], b["det_liabilities"])):
-            moves.append(f"deposit outflows {'up' if dl > 0 else 'down'} {currency} {_fmt_amt(abs(dl))}")
-        if abs(da) >= max(1.0, 0.01 * max(b["ai_assets"], b["det_assets"])):
-            moves.append(f"loan repayments {'up' if da > 0 else 'down'} {currency} {_fmt_amt(abs(da))}")
-        if moves:
-            why += " Versus the contractual view: " + ", ".join(moves) + " because of predicted early exits."
-        out.append({"currency": currency, "location": location, "scope": where, "bucket": key, "severity": severity,
-                    "action": text, "rationale": why, "amount": round(abs(ai), 2),
-                    "deterministic_net": round(b["det_net"], 2), "ai_net": round(ai, 2)})
-    rank = {"high": 0, "medium": 1, "low": 2}
-    out.sort(key=lambda r: (rank[r["severity"]], det.BUCKET_KEYS.index(r["bucket"])))
+        key, p_short, p5 = src["bucket"], src.get("p_shortfall") or 0.0, src.get("p5")
+        if p5 is not None and p5 < 0:           # might turn into a gap: invest one tenor shorter than usual
+            shorter = INSTRUMENT[det.BUCKET_KEYS[max(0, det.BUCKET_KEYS.index(key) - 1)]][1]
+            add(src, "keep_liquid", "medium",
+                f"Invest {key} surplus short – {money(left)} in {shorter} ({p_short:.0%} shortfall risk)",
+                f"Expected surplus, but the bad case is −{money(-p5)}, so do not lock it into {INSTRUMENT[key][1]}.", left)
+        else:
+            add(src, "invest", "low", f"Invest surplus – {money(left)} in {INSTRUMENT[key][1]}",
+                f"Not needed by any later bucket{f'; shortfall risk {p_short:.0%}' if p_short else ''}.", left)
+
+    kinds = ["fund", "retain", "buffer", "keep_liquid", "cover", "invest"]
+    out.sort(key=lambda r: (_RANK[r["severity"]], det.BUCKET_KEYS.index(r["bucket"]), kinds.index(r["kind"])))
     return out
 
 
