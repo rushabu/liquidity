@@ -91,3 +91,9 @@ app.include_router(health.router)
 app.include_router(ingest.router)
 app.include_router(ladder.router)
 app.include_router(behavioral.router)
+
+
+@app.on_event("startup")
+def _warm_ai_views() -> None:                   # background: the API is ready immediately, the AI views shortly after
+    if get_settings().environment != "test":
+        behavioral.warm_async()

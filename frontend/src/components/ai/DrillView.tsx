@@ -4,6 +4,7 @@ import {
   type ApiError, type BucketKey, type Segment, type Side,
 } from "../../api/client";
 import { formatInt, formatMoney, formatPct, formatSignedCompact } from "../../lib/format";
+import { useSticky } from "../../lib/sticky";
 import type { DrillPreset, Shared } from "./types";
 
 const PAGE = 10;
@@ -66,22 +67,25 @@ export function WhyPanel({ id, onClose }: { id: string; onClose: () => void }) {
 
 export function DrillView({ shared, preset }: { shared: Shared; preset: DrillPreset | null }) {
   const { currency, setCurrency, location } = shared;
-  const [bucket, setBucket] = useState<BucketKey | "">(preset?.bucket ?? "1-3M");
-  const [side, setSide] = useState<Side | "">(preset?.side ?? "");
-  const [segment, setSegment] = useState<Segment | "">(preset?.segment ?? "");
-  const [pRange, setPRange] = useState<PRange>("all");
-  const [sRange, setSRange] = useState<SRange>("all");
-  const [moved, setMoved] = useState<boolean>(preset?.moved_only ?? true);
-  const [sort, setSort] = useState<"p_early" | "shift_days" | "spread_pp" | "cash_at_maturity">("p_early");
-  const [page, setPage] = useState(1);
+  const [bucket, setBucket] = useSticky<BucketKey | "">("ai.drill.bucket", preset?.bucket ?? "1-3M");
+  const [side, setSide] = useSticky<Side | "">("ai.drill.side", preset?.side ?? "");
+  const [segment, setSegment] = useSticky<Segment | "">("ai.drill.segment", preset?.segment ?? "");
+  const [pRange, setPRange] = useSticky<PRange>("ai.drill.p", "all");
+  const [sRange, setSRange] = useSticky<SRange>("ai.drill.spread", "all");
+  const [moved, setMoved] = useSticky<boolean>("ai.drill.moved", preset?.moved_only ?? true);
+  const [sort, setSort] = useSticky<"p_early" | "shift_days" | "spread_pp" | "cash_at_maturity">("ai.drill.sort", "p_early");
+  const [page, setPage] = useSticky("ai.drill.page", 1);
+  const [appliedPreset, setAppliedPreset] = useSticky<number | null>("ai.drill.applied", null);
   const [data, setData] = useState<AiTxnPage | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useSticky<string | null>("ai.drill.selected", null);
   const [exporting, setExporting] = useState(false);
   const seq = useRef(0);
 
   useEffect(() => {
-    if (!preset) return;
+    if (!preset || (preset.id !== undefined && preset.id === appliedPreset)) return;   // apply each click once
+    setAppliedPreset(preset.id ?? null);
+    setPRange("all"); setSRange("all");
     if (preset.bucket) setBucket(preset.bucket);
     if (preset.currency) setCurrency(preset.currency);
     setSide(preset.side ?? ""); setSegment(preset.segment ?? ""); setMoved(preset.moved_only ?? true);
@@ -93,7 +97,8 @@ export function DrillView({ shared, preset }: { shared: Shared; preset: DrillPre
     spread_min: SPREADS[sRange][0], spread_max: SPREADS[sRange][1], moved_only: moved,
   };
   const key = JSON.stringify(query);
-  useEffect(() => { setPage(1); }, [key]);
+  const firstKey = useRef(key);
+  useEffect(() => { if (key !== firstKey.current) { firstKey.current = key; setPage(1); } }, [key]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const mine = ++seq.current;
     setErr(null);

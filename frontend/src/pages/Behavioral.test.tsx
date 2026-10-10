@@ -3,8 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import * as client from "../api/client";
+import { clearSticky } from "../lib/sticky";
 import { AiGapPage } from "./AiGapPage";
 
+beforeEach(() => { clearSticky(); client.clearAiCache(); });
 afterEach(() => vi.restoreAllMocks());
 
 const model: client.ModelSummary = {
@@ -127,4 +129,31 @@ it("explains a missing historical log", async () => {
   vi.spyOn(client, "getComparison").mockRejectedValue(new client.ApiError("MODEL_NOT_READY", "The behavioural model needs the historical log.", 409));
   show();
   expect(await screen.findByRole("alert")).toHaveTextContent(/historical log/);
+});
+
+it("keeps data and filters when switching tabs: no second request", async () => {
+  const cmp = vi.spyOn(client, "getComparison").mockResolvedValue(comparison());
+  const w = vi.spyOn(client, "getWhy").mockImplementation((p) => Promise.resolve(why(p?.market_shift_pp ?? 0)));
+  show();
+  await userEvent.selectOptions(await screen.findByLabelText("Segment"), "Retail");
+  await waitFor(() => expect(cmp).toHaveBeenCalledTimes(2));
+  await userEvent.click(screen.getByRole("tab", { name: "Why it changed" }));
+  expect(await screen.findByText("Retail deposits")).toBeInTheDocument();
+  const whyCalls = w.mock.calls.length;
+  await userEvent.click(screen.getByRole("tab", { name: "Compare" }));
+  expect(screen.getByLabelText("Segment")).toHaveValue("Retail");             // filter kept
+  await userEvent.click(screen.getByRole("tab", { name: "Why it changed" }));
+  expect(cmp).toHaveBeenCalledTimes(2);                                      // nothing refetched
+  expect(w).toHaveBeenCalledTimes(whyCalls);
+});
+
+it("the response store answers repeated requests from memory and is cleared on demand", async () => {
+  const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+    Promise.resolve(new Response(JSON.stringify({ ok: 1 }), { status: 200 })));
+  await client.getModelCard();
+  await client.getModelCard();
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  client.clearAiCache();
+  await client.getModelCard();
+  expect(fetchSpy).toHaveBeenCalledTimes(2);
 });

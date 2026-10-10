@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
+import threading
 from collections import Counter, defaultdict
 from datetime import date
 from decimal import Decimal
@@ -28,6 +30,7 @@ from ..services.errors import ApiError
 from .ladder import CURRENCIES, Policy, _plain
 
 router = APIRouter(prefix="/api/behavioral", tags=["behavioral"])
+log = logging.getLogger("liquidplus")
 
 SORTS = {"transaction_id", "maturity_date", "contractual_maturity_date", "amount", "cash_at_maturity",
          "p_early", "shift_days", "spread_pp"}
@@ -579,7 +582,7 @@ def export_history(as_of_date: date | None = None, user: CurrentUser = Depends(g
     """A prediction for every row of the historical log (closed and still-open contracts)."""
     engine = get_engine()
     hb, m = bq.get_model(engine, as_of_date)
-    rows = bq.fetch_history(engine, hb["id"])
+    rows = bq.cached_history(engine, hb["id"])
     loc = None if user.is_support else user.location
     if not user.is_support and not loc:
         raise ApiError(403, "LOCATION_NOT_ASSIGNED", "Your account has no location, so no data can be shown")
@@ -590,3 +593,20 @@ def export_history(as_of_date: date | None = None, user: CurrentUser = Depends(g
     cols = ["transaction_id", "book", "customer_segment", "location", "transaction_date", "contractual_maturity_date",
             "actual_closure_date", "status", "actual_early_exit", "spread_pp", "p_early"]
     return _csv(preds, cols, f"liquidplus_history_predictions_{hb['as_of_date'].isoformat()}.csv")
+
+
+# ---------------------------------------------------------------------------------------------- warm-up
+def warm() -> None:
+    """Pre-compute the default AI views (model, predictions, simulation) for the newest snapshot, so the first
+    person to open the AI gap ladder does not wait. Runs in the background; missing data is not an error."""
+    support = CurrentUser(id="warm-up", role="support")
+    try:
+        c = _context(support, None, None, "exclude")
+        _simulation(c, bm.DEFAULT_SIMULATIONS)
+        log.info("AI gap ladder warmed", extra={"snapshot": c["snapshot"].isoformat()})
+    except Exception as e:                      # e.g. SNAPSHOT_NOT_READY / MODEL_NOT_READY / database down
+        log.info("AI gap ladder warm-up skipped", extra={"reason": getattr(e, "code", e.__class__.__name__)})
+
+
+def warm_async() -> None:
+    threading.Thread(target=warm, name="ai-warm-up", daemon=True).start()

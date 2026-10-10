@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from ..config import get_settings
 from ..db import get_engine
 from ..deps import CurrentUser, get_current_user, require_upload_role
-from ..services import queries
+from ..services import behavioral_queries, queries
 from ..services.errors import ApiError
 from ..services.ingestion import ingest_book
 
@@ -39,8 +39,13 @@ def upload(
             as_of = date.fromisoformat(as_of_date)
         except ValueError:
             raise ApiError(422, "AS_OF_DATE_INVALID", "as_of_date must be a real date in YYYY-MM-DD format") from None
-    return ingest_book(get_engine(), book=book, content=content, filename=file.filename or "upload",
-                       as_of_date=as_of, actor=user.actor)
+    result = ingest_book(get_engine(), book=book, content=content, filename=file.filename or "upload",
+                         as_of_date=as_of, actor=user.actor)
+    behavioral_queries.invalidate()          # a new snapshot: drop cached AI ladder data in this API process
+    if get_settings().environment != "test":
+        from .behavioral import warm_async      # local import: the AI router imports this module's siblings
+        warm_async()                             # recompute the AI views in the background, ready on first visit
+    return result
 
 
 @router.get("/summary")

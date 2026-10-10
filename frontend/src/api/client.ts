@@ -155,7 +155,7 @@ export function uploadBook(
       } catch {
         /* non-JSON error page */
       }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(body as IngestResult);
+      if (xhr.status >= 200 && xhr.status < 300) { clearAiCache(); resolve(body as IngestResult); }
       else reject(toApiError(xhr.status, body, xhr.getResponseHeader("x-request-id") ?? undefined));
     };
     xhr.onerror = () => reject(new ApiError("NETWORK", "Upload failed: cannot reach the server."));
@@ -552,13 +552,32 @@ export interface AiTxnQuery extends LadderQuery {
 const qb = (o: object) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "boolean" ? (v ? "true" : undefined) : v])) as Record<string, string | number | undefined>;
 
-export const getAiLadder = (p: LadderQuery = {}) => getJson<AiLadderResponse>("/api/behavioral/ladder", q(p));
-export const getComparison = (p: CompareQuery = {}) => getJson<CompareResponse>("/api/behavioral/compare", q(p));
-export const getWhy = (p: WhyQuery = {}) => getJson<WhyResponse>("/api/behavioral/why", q(p));
-export const getAiTransactions = (p: AiTxnQuery) => getJson<AiTxnPage>("/api/behavioral/transactions", qb(p));
+/* Response store for the AI gap ladder: the same request (same user, same parameters) is answered from memory
+ * for 10 minutes, and identical requests in flight share one promise. Switching tabs or pages therefore never
+ * refetches or recomputes. A successful upload clears it (see uploadBook), and failures are never stored. */
+const AI_TTL_MS = 10 * 60 * 1000;
+const aiStore = new Map<string, { at: number; promise: Promise<unknown> }>();
+export function clearAiCache(): void {
+  aiStore.clear();
+}
+function cachedJson<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+  const key = `${tokenProvider() ?? ""}|${path}|${JSON.stringify(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").sort())}`;
+  const hit = aiStore.get(key);
+  if (hit && Date.now() - hit.at < AI_TTL_MS) return hit.promise as Promise<T>;
+  const promise = getJson<T>(path, params);
+  aiStore.set(key, { at: Date.now(), promise });
+  promise.catch(() => aiStore.delete(key));
+  return promise;
+}
+
+export const getAiLadder = (p: LadderQuery = {}) => cachedJson<AiLadderResponse>("/api/behavioral/ladder", q(p));
+export const getLadderCached = (p: LadderQuery = {}) => cachedJson<LadderResponse>("/api/ladder", q(p));
+export const getComparison = (p: CompareQuery = {}) => cachedJson<CompareResponse>("/api/behavioral/compare", q(p));
+export const getWhy = (p: WhyQuery = {}) => cachedJson<WhyResponse>("/api/behavioral/why", q(p));
+export const getAiTransactions = (p: AiTxnQuery) => cachedJson<AiTxnPage>("/api/behavioral/transactions", qb(p));
 export const getAiExplanation = (id: string, p: LadderQuery = {}) =>
-  getJson<AiExplanation>(`/api/behavioral/explain/${encodeURIComponent(id)}`, q(p));
-export const getModelCard = () => getJson<ModelCard>("/api/behavioral/model");
+  cachedJson<AiExplanation>(`/api/behavioral/explain/${encodeURIComponent(id)}`, q(p));
+export const getModelCard = () => cachedJson<ModelCard>("/api/behavioral/model");
 
 /** Download a CSV that needs the auth header (fetched as a blob, then saved). */
 async function downloadCsv(path: string, params: Record<string, string | number | undefined>, filename: string) {

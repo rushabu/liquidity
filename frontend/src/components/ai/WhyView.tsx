@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getWhy, type ApiError, type WhyResponse } from "../../api/client";
 import { formatInt, formatPct, formatSignedCompact } from "../../lib/format";
+import { useSticky } from "../../lib/sticky";
 import { ModelCardPanel } from "../ModelCardPanel";
 import type { DrillPreset, PageMeta, Shared } from "./types";
 
@@ -21,8 +22,8 @@ function Story({ text }: { text: string }) {
 
 export function WhyView({ shared, onDrill, onMeta }: { shared: Shared; onDrill: (p: DrillPreset) => void; onMeta: (m: PageMeta) => void }) {
   const { currency, location } = shared;
-  const [shift, setShift] = useState(0);
-  const [applied, setApplied] = useState(0);
+  const [shift, setShift] = useSticky("ai.why.shift", 0);
+  const [applied, setApplied] = useSticky("ai.why.applied", 0);
   const [data, setData] = useState<WhyResponse | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);

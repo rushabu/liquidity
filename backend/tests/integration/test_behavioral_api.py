@@ -8,6 +8,13 @@ import pytest
 from tests.integration.conftest import auth, upload
 
 
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    from app.services import behavioral_queries
+    behavioral_queries.invalidate()           # tests truncate tables directly, outside the upload endpoint
+    yield
+
+
 @pytest.fixture
 def loaded(client):
     for book in ("asset", "liability", "historical"):
@@ -157,3 +164,15 @@ def test_calc_date_moves_the_window(client, loaded):
     later = js(client, "/api/behavioral/ladder", calc_date="2027-01-31")
     assert later["metadata"]["calculation_date"] == "2027-01-31" and later["metadata"]["past_due_count"] > 0
     assert date.fromisoformat(later["buckets"][0]["start_date"]) == date(2027, 1, 31)
+
+
+def test_snapshot_is_cached_and_an_upload_refreshes_it(client, loaded):
+    from app.services import behavioral_queries as bq
+    first = js(client, "/api/behavioral/ladder")["metadata"]["asset_batch"]["id"]
+    n = len(bq.SNAPSHOTS.data)
+    js(client, "/api/behavioral/compare", currency="EUR")
+    js(client, "/api/behavioral/why", currency="EUR")
+    assert len(bq.SNAPSHOTS.data) == n                      # same book: read once, reused by every view
+    assert upload(client, "asset").status_code == 201        # re-upload -> new active batch
+    second = js(client, "/api/behavioral/ladder")["metadata"]["asset_batch"]["id"]
+    assert second != first

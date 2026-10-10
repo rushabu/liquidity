@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CompareView } from "../components/ai/CompareView";
 import { DrillView } from "../components/ai/DrillView";
 import { LadderView } from "../components/ai/LadderView";
 import type { DrillPreset, PageMeta, Shared } from "../components/ai/types";
 import { WhyView } from "../components/ai/WhyView";
+import { useSticky } from "../lib/sticky";
 
 const VIEWS = [
   { key: "compare", label: "Compare" },
@@ -18,13 +19,15 @@ type View = (typeof VIEWS)[number]["key"];
 export function AiGapPage() {
   const [params, setParams] = useSearchParams();
   const view = (VIEWS.find((v) => v.key === params.get("view"))?.key ?? "compare") as View;
-  const [currency, setCurrency] = useState("");
-  const [location, setLocation] = useState("");
-  const [preset, setPreset] = useState<DrillPreset | null>(null);
-  const [meta, setMeta] = useState<PageMeta | null>(null);
+  const [currency, setCurrency] = useSticky("ai.currency", "");
+  const [location, setLocation] = useSticky("ai.location", "");
+  const [preset, setPreset] = useSticky<DrillPreset | null>("ai.preset", null);
+  const [meta, setMeta] = useSticky<PageMeta | null>("ai.meta", null);
+  const [visited, setVisited] = useSticky<View[]>("ai.visited", []);
+  useEffect(() => { setVisited((v) => (v.includes(view) ? v : [...v, view])); }, [view, setVisited]);
   const shared: Shared = { currency, setCurrency, location, setLocation };
   const go = (v: View) => setParams(v === "compare" ? {} : { view: v });
-  const drill = (p: DrillPreset) => { setPreset({ ...p }); go("drill"); };
+  const drill = (p: DrillPreset) => { setPreset({ ...p, id: Date.now() }); go("drill"); };
 
   return (
     <main className="page ai-page">
@@ -42,10 +45,15 @@ export function AiGapPage() {
           ))}
         </div>
       </div>
-      {view === "compare" && <CompareView shared={shared} onDrill={drill} onMeta={setMeta} />}
-      {view === "ladder" && <LadderView shared={shared} onDrill={drill} onMeta={setMeta} />}
-      {view === "why" && <WhyView shared={shared} onDrill={drill} onMeta={setMeta} />}
-      {view === "drill" && <DrillView shared={shared} preset={preset} />}
+      {/* Views stay mounted once opened (hidden when inactive): switching tabs keeps their data and filters. */}
+      {[...new Set<View>([...visited, view])].map((v) => (
+        <div key={v} hidden={v !== view} className="ai-view">
+          {v === "compare" && <CompareView shared={shared} onDrill={drill} onMeta={setMeta} />}
+          {v === "ladder" && <LadderView shared={shared} onDrill={drill} onMeta={setMeta} />}
+          {v === "why" && <WhyView shared={shared} onDrill={drill} onMeta={setMeta} />}
+          {v === "drill" && <DrillView shared={shared} preset={preset} />}
+        </div>
+      ))}
       <p className="meta">Needs the asset, liability and historical books for the same date. <Link to="/upload">Data ingestion</Link> · <Link to="/ladder">Deterministic ladder</Link></p>
     </main>
   );

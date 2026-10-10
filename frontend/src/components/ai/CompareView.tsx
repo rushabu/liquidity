@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getComparison, type ApiError, type CompareResponse, type Recommendation, type Segment, type Side } from "../../api/client";
+import { getAiLadder, getAiTransactions, getComparison, getLadderCached, getWhy, type ApiError, type CompareResponse, type Recommendation, type Segment, type Side } from "../../api/client";
 import { formatInt, formatMoney, formatPct, formatSignedCompact } from "../../lib/format";
+import { useSticky } from "../../lib/sticky";
 import { MonthlyChart } from "./MonthlyChart";
 import type { DrillPreset, PageMeta, Shared } from "./types";
 
@@ -23,22 +24,38 @@ export function Actions({ items, empty, compact = false }: { items: Recommendati
   );
 }
 
+/** Warm the other tabs in the background (the server has the snapshot hot now), so they open instantly.
+ *  Same parameters as their first request, so the response store answers them from memory. */
+function prefetch(currency: string, location: string) {
+  const loc = location || undefined;
+  const quiet = () => undefined;
+  getWhy({ currency, location: loc, market_shift_pp: 0 }).catch(quiet);
+  getAiLadder().catch(quiet);
+  getLadderCached().catch(quiet);
+  getAiTransactions({ currency, location: loc, bucket: "1-3M", p_min: 0, p_max: 1, moved_only: true, sort: "p_early", order: "desc", page: 1, page_size: 10 }).catch(quiet);
+}
+
 export function CompareView({ shared, onDrill, onMeta }: { shared: Shared; onDrill: (p: DrillPreset) => void; onMeta: (m: PageMeta) => void }) {
   const { currency, setCurrency, location, setLocation } = shared;
-  const [side, setSide] = useState<Side | "">("");
-  const [segment, setSegment] = useState<Segment | "">("");
+  const [side, setSide] = useSticky<Side | "">("ai.cmp.side", "");
+  const [segment, setSegment] = useSticky<Segment | "">("ai.cmp.segment", "");
   const [data, setData] = useState<CompareResponse | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [month, setMonth] = useState<number | null>(null);
+  const [month, setMonth] = useSticky<number | null>("ai.cmp.month", null);
   const seq = useRef(0);
 
+  const loaded = useRef("");                               // params the data on screen belongs to
   useEffect(() => {
+    const want = JSON.stringify([currency, location, side, segment]);
+    if (data && want === loaded.current) return;             // e.g. currency "" just resolved to EUR: same data
     const mine = ++seq.current;
     setError(null);
     getComparison({ currency: currency || undefined, location: location || undefined, side: side || undefined, segment: segment || undefined })
       .then((d) => {
         if (mine !== seq.current) return;
+        loaded.current = JSON.stringify([d.metadata.currency, location, side, segment]);
         setData(d); onMeta(d.metadata);
+        prefetch(d.metadata.currency, location);
         if (!currency) setCurrency(d.metadata.currency);
         setMonth((m) => m ?? d.kpis.deepest_opposite.month);
       }, (e: ApiError) => { if (mine === seq.current) setError(e); });

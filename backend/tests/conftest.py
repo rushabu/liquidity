@@ -9,6 +9,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", os.environ.get("TEST_DATABASE_URL", "postgresql://x:x@localhost:1/none"))
 os.environ.setdefault("JWT_SECRET", "test-secret-test-secret-test-secret-123")
 os.environ["DEV_AUTH_BYPASS"] = "false"
+os.environ.setdefault("ENVIRONMENT", "test")      # no background AI warm-up during tests
 
 DATA = Path(__file__).parent / "data"
 TEST_DB = os.environ.get("TEST_DATABASE_URL")

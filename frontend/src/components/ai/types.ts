@@ -10,6 +10,7 @@ export interface Shared {
 
 /** Filters handed to the Drill-down tab from a click on another tab. */
 export interface DrillPreset {
+  id?: number;                 // set per click, so the same preset is applied once
   bucket?: BucketKey;
   currency?: string;
   side?: Side;

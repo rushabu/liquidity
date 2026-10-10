@@ -261,6 +261,14 @@ cut-off, F1 0.71 at the best cut-off (21 %). Shown with calibration on the model
 - `GET /api/behavioral/transactions.csv` – predictions for every live contract (filters optional)
 - `GET /api/behavioral/history-predictions.csv` – a prediction for every historical row (closed and open)
 
-Needs the historical log uploaded (409 `MODEL_NOT_READY` otherwise). Trained once per historical upload (~0.7 s) and
-cached per snapshot. New dependency: `numpy`. Tests: `tests/unit/test_behavioral_core.py`, `tests/integration/test_behavioral_api.py`,
+Needs the historical log uploaded (409 `MODEL_NOT_READY` otherwise).
+
+**Caching / speed**
+- *API*: the live book, the history, the trained model and every computed view are kept in memory per snapshot
+  (keyed by batch ids); the "which batches are active" lookup is refreshed every 60 s and immediately after an upload
+  through this API. Concurrent requests for the same snapshot compute it once. The default views are pre-computed in
+  the background at startup and after each upload, so the first visit is fast.
+- *Browser*: responses are kept for 10 minutes (per user and parameters) and cleared after an upload; the four tabs stay
+  mounted once opened; filters, selected bucket/contract and the scenario survive switching tabs and pages.
+  Opening Compare pre-loads the other tabs in the background. New dependency: `numpy`. Tests: `tests/unit/test_behavioral_core.py`, `tests/integration/test_behavioral_api.py`,
 `frontend/src/pages/Behavioral.test.tsx`.

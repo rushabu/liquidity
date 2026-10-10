@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAiLadder, getLadder, type AiLadderResponse, type ApiError, type BucketKey, type LadderResponse, type LadderRow } from "../../api/client";
+import { getAiLadder, getLadderCached, type AiLadderResponse, type ApiError, type BucketKey, type LadderResponse, type LadderRow } from "../../api/client";
 import { formatInt, formatMoney, formatPct, formatSignedCompact } from "../../lib/format";
 import { GapChart } from "../GapChart";
 import type { DrillPreset, PageMeta, Shared } from "./types";
@@ -16,7 +16,7 @@ export function LadderView({ shared, onDrill, onMeta }: { shared: Shared; onDril
   const seq = useRef(0);
   useEffect(() => {
     const mine = ++seq.current;
-    Promise.all([getAiLadder(), getLadder()]).then(([a, b]) => {
+    Promise.all([getAiLadder(), getLadderCached()]).then(([a, b]) => {
       if (mine !== seq.current) return;
       setAi(a); setBase(b); onMeta(a.metadata);
       if (!currency) setCurrency(a.ladder[0]?.currency ?? "");
