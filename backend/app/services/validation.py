@@ -248,7 +248,7 @@ def check_columns(book: str, headers: list[str]) -> list[str]:
         for other, ospec in SPECS.items():
             if other != book and all(h in have for h in ospec.headers):
                 raise ApiError(422, "FILE_WRONG_BOOK",
-                               f"This looks like a {other} book, but it was uploaded as {book}. "
+                               f"This file looks like the {other} book, but it was uploaded as the {book} book. "
                                f"Missing for {book}: {', '.join(missing)}.",
                                {"expected_book": book, "detected_book": other, "missing_columns": missing})
         raise ApiError(422, "FILE_MISSING_COLUMNS",
