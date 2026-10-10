@@ -51,3 +51,27 @@ def test_failure_from_supabase_is_reported_not_swallowed():
 def test_key_styles():
     assert _admin_headers("sb_secret_abc") == {"apikey": "sb_secret_abc"}
     assert _admin_headers("eyJ.legacy.jwt") == {"apikey": "eyJ.legacy.jwt", "Authorization": "Bearer eyJ.legacy.jwt"}
+
+
+def test_get_token_signs_in_and_reads_role_claims():
+    import base64
+    from scripts.get_token import claims_of, sign_in
+    payload = base64.urlsafe_b64encode(json.dumps({"app_metadata": {"role": "support"}}).encode()).decode().rstrip("=")
+    seen = {}
+
+    def handler(req):
+        seen["url"], seen["key"], seen["body"] = str(req.url), req.headers["apikey"], json.loads(req.content)
+        return httpx.Response(200, json={"access_token": f"h.{payload}.s"})
+    tok = sign_in("https://x.supabase.co/", "anon-key", "a@b.c", "pw", httpx.MockTransport(handler))
+    assert seen["url"] == "https://x.supabase.co/auth/v1/token?grant_type=password" and seen["key"] == "anon-key"
+    assert seen["body"] == {"email": "a@b.c", "password": "pw"} and claims_of(tok)["app_metadata"]["role"] == "support"
+
+
+def test_get_token_reports_bad_credentials():
+    from scripts.get_token import sign_in
+    t = httpx.MockTransport(lambda r: httpx.Response(400, json={"error_description": "Invalid login credentials"}))
+    try:
+        sign_in("https://x.supabase.co", "k", "a@b.c", "bad", t)
+        assert False
+    except SystemExit as e:
+        assert "Invalid login credentials" in str(e)

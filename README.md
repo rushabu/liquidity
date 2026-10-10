@@ -87,9 +87,32 @@ docker compose up --build        # API http://localhost:8000 · web http://local
 
 **No Supabase?** `docker compose --profile localdb up --build` starts `postgres:16` (same migration applied on first start). Set `DATABASE_URL=postgresql://postgres:postgres@localdb:5432/liquidplus` in `backend/.env`.
 
-### 4. Try it
+### 4. Run and test against Supabase
 
-Open `/upload`, drop the three sample files from `backend/tests/data/` (name them like `asset_book - 10102026.xlsx` so the date is picked up). Expected result:
+```bash
+# 0. one time: fill backend/.env (DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SEED_USER_PASSWORD)
+cd backend && pip install -r requirements.txt
+python -m scripts.setup_supabase all         # connect, create tables, create the 6 users + roles
+
+# 1. start the API (terminal 1)
+uvicorn app.main:app --port 8000
+curl localhost:8000/health/db                # {"status":"ok","database":"reachable",...}
+
+# 2. get tokens for a Support user and a standard user (terminal 2)
+export LIQUIDPLUS_TOKEN=$(python -m scripts.get_token support@liquidplus.dev)
+export LIQUIDPLUS_STANDARD_TOKEN=$(python -m scripts.get_token singapore@liquidplus.dev)
+
+# 3. automated end-to-end check (uploads the 3 sample files, 13 checks, expects 13/13)
+python -m scripts.smoke_test
+
+# 4. the UI (terminal 3)
+cd ../frontend && cp .env.example .env && npm ci && npm run dev     # http://localhost:5173/upload
+#    open the browser console on that page and run:
+#    sessionStorage.setItem("liquidplus.token", "<paste $LIQUIDPLUS_TOKEN>")   then reload
+#    drop the three files from backend/tests/data/ (named like "asset_book - 10102026.xlsx")
+```
+
+Expected result on the sample files:
 
 | Book | Read | Stored | Rejected | Warnings |
 |---|---:|---:|---:|---:|
@@ -97,7 +120,7 @@ Open `/upload`, drop the three sample files from `backend/tests/data/` (name the
 | Liability | 1,104 | 1,103 | 1 | 0 |
 | Historical | 16,186 | 16,179 | 7 | 1 |
 
-→ **18,035 rows stored as the 2026-10-10 snapshot**, 11 error-report lines (10 rejects + 1 warning).
+-> **18,035 rows stored as the 2026-10-10 snapshot**, 11 error-report lines (10 rejects + 1 warning). Tokens last about an hour; run `get_token` again when they expire. Note that the smoke test replaces the active 2026-10-10 snapshot.
 
 ## API
 
