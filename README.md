@@ -225,3 +225,42 @@ Reads the **active asset + liability snapshot** from Postgres and builds the mat
 - **Location scoping:** Support sees all; a standard user gets only their JWT `location` (filtered in SQL, roll-ups included); no location -> 403 `LOCATION_NOT_ASSIGNED`.
 - Needs asset + liability for the same date (historical is not required): otherwise 409 `SNAPSHOT_NOT_READY`.
 - Tests: `tests/unit/test_ladder_core.py`, `tests/integration/test_ladder_api.py` (every currency x location x bucket cell checked against `tests/data/golden_deterministic_ladder.json`).
+
+## AI gap ladder (`/ai`): Compare · AI ladder · Why it changed · Drill-down
+
+Predicts which live loans will be pre-closed and which deposits will be withdrawn early, moves each one to an
+**adjusted maturity** (cash amount unchanged, only the date moves) and compares the result with the deterministic ladder.
+
+**Model** (`backend/app/core/behavioral.py`, numpy only, no ML library)
+1. *Early-exit probability*: logistic regression **written from scratch** (Newton-Raphson / IRLS, L2 = 1) trained on
+   **every closed contract** of the historical log (14,325 on the sample; the 1,854 still-open contracts have no
+   outcome yet and are scored, not trained on). Main driver is the **rate incentive**: loan rate − market rate for
+   loans, market rate − deposit rate for deposits; plus segment, client rating, product, location, tenor, amount.
+   Validated against scikit-learn: identical coefficients (to 1e-7) and AUC.
+2. *Timing*: early exits happen at 40–90 % of a contract's life (median ~66 %), taken from history.
+3. *Conditioning on today*: `p_now = p·(1−F(e)) / (1−p·F(e))`, e = share of life already passed.
+4. *Adjusted maturity* = contractual − p_now × (contractual − expected early-exit date). Amounts never change, so the
+   total net gap is identical in both views and every difference is timing.
+5. *Range*: 1,000 Monte Carlo runs (fixed seed per snapshot) → P5 / P50 / P95 net gap per bucket.
+6. *Recommendations* per bucket from the AI gap and its simulated bad case ("Raise short-term funding – EUR 49.0M").
+7. *Market-rate scenario*: re-scores every contract with all market rates shifted by −2…+2 pp.
+
+Holdout (newest 20 % by transaction date): AUC 0.744, Brier 0.234 (0.276 flat), accuracy 62.5 % / F1 0.48 at a 50 %
+cut-off, F1 0.71 at the best cut-off (21 %). Shown with calibration on the model card ("About the model").
+
+**Views**
+- *Compare*: KPIs, cumulative net gap by month (24 months, divergence shaded), AI − deterministic per month
+  (click a bar), bucket comparison, P5–P95 range, recommended actions. Filters: currency, location, side, segment.
+- *AI ladder*: assets / liabilities / net gap per bucket at AI-adjusted maturities (same chart as the deterministic ladder).
+- *Why it changed*: per-bucket explanation, what drives the model, who moved, market-rate scenario slider, model card.
+- *Drill-down*: filters (AI bucket, currency, side, segment, P(early), spread, moved only), KPIs, contracts with reason
+  chips, per-contract "why it moved" panel (log-odds contributions), CSV export of every prediction.
+
+**API** (same auth, location scoping, buckets and `calc_date` / `past_due_policy` as `/api/ladder`)
+- `GET /api/behavioral/compare` · `/ladder` · `/why?market_shift_pp=` · `/transactions` · `/explain/{id}` · `/model`
+- `GET /api/behavioral/transactions.csv` – predictions for every live contract (filters optional)
+- `GET /api/behavioral/history-predictions.csv` – a prediction for every historical row (closed and open)
+
+Needs the historical log uploaded (409 `MODEL_NOT_READY` otherwise). Trained once per historical upload (~0.7 s) and
+cached per snapshot. New dependency: `numpy`. Tests: `tests/unit/test_behavioral_core.py`, `tests/integration/test_behavioral_api.py`,
+`frontend/src/pages/Behavioral.test.tsx`.

@@ -17,3 +17,12 @@ export function formatCompact(n: number): string {
   const s = a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);
   return n < 0 ? `-${s}` : s;
 }
+
+export const formatPct = (p: number, digits = 0): string => `${(p * 100).toFixed(digits)}%`;
+
+/** Signed compact money for deltas: +12.3M / −4.5M (true minus sign). */
+export function formatSignedCompact(n: number): string {
+  if (n === 0) return "0";
+  const s = formatCompact(Math.abs(n));
+  return n > 0 ? `+${s}` : `−${s}`;
+}

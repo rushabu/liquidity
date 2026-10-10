@@ -289,3 +289,295 @@ export const getLadder = (p: LadderQuery = {}) => getJson<LadderResponse>("/api/
 export const getLadderTransactions = (p: LadderTxnQuery) => getJson<LadderTxnPage>("/api/ladder/transactions", q(p));
 export const getExplanation = (id: string, p: LadderQuery = {}) =>
   getJson<Explanation>(`/api/ladder/explain/${encodeURIComponent(id)}`, q(p));
+
+/* ------------------------------------------------------------------ AI gap ladder (behavioural model) */
+export type Side = "asset" | "liability";
+export type Segment = "Retail" | "Corporate" | "SME" | "Institutional";
+
+export interface ModelSummary {
+  name: string;
+  historical_batch: { id: string; filename: string; as_of_date: string; rows: number };
+  type: string;
+  trained_on: number;
+  early_exit_rate: number;
+  holdout_auc: number | null;
+  holdout_brier: number | null;
+  holdout_f1: number | null;
+  holdout_accuracy: number | null;
+}
+
+interface AiMeta {
+  as_of_date: string;
+  calculation_date: string;
+  past_due_policy: PastDuePolicy;
+  scope_location: string | null;
+  market_shift_pp: number;
+  currencies: string[];
+  locations: string[];
+  model: ModelSummary;
+}
+
+export interface AiLadderResponse extends LadderResponse {
+  metadata: LadderResponse["metadata"] & AiMeta & {
+    shifted_count: number;
+    moved_count: number;
+    average_p_early: number;
+    average_shift_days: number;
+  };
+}
+
+export interface MonthPoint {
+  month: number;
+  end_date: string;
+  det_net: number;
+  ai_net: number;
+  det_cum: number;
+  ai_cum: number;
+  diff: number;
+  note: string;
+  bucket: BucketKey | null;
+}
+
+export interface CompareBucket {
+  bucket: BucketKey;
+  label: string;
+  start_date: string;
+  end_date: string | null;
+  det_assets: number;
+  det_liabilities: number;
+  det_net: number;
+  ai_assets: number;
+  ai_liabilities: number;
+  ai_net: number;
+  delta: number;
+  det_count: number;
+  ai_count: number;
+  p5: number | null;
+  p50: number | null;
+  p95: number | null;
+  p_shortfall: number | null;
+}
+
+export interface Recommendation {
+  currency: string;
+  location: string | null;
+  scope: string;
+  bucket: BucketKey;
+  severity: "high" | "medium" | "low";
+  action: string;
+  rationale: string;
+  amount: number;
+  deterministic_net: number;
+  ai_net: number;
+}
+
+export interface CompareResponse {
+  metadata: AiMeta & {
+    simulations: number;
+    currency: string;
+    location: string | null;
+    side: Side | null;
+    segment: Segment | null;
+    horizon_months: number;
+  };
+  kpis: {
+    moved: number;
+    total: number;
+    shifted: number;
+    biggest_gain: { month: number; amount: number };
+    deepest_opposite: { month: number; amount: number };
+    det_total: number;
+    ai_total: number;
+  };
+  months: MonthPoint[];
+  buckets: CompareBucket[];
+  recommendations: Recommendation[];
+  overview: Recommendation[];
+  notes: string[];
+}
+
+export interface DriverImportance { label: string; strength: number; log_odds: number; level: "High" | "Med" | "Low" | "~0" }
+
+export interface WhyResponse {
+  metadata: AiMeta & { currency: string; location: string | null };
+  buckets: { bucket: BucketKey; moved_in: number; moved_out: number; shift: number; det_net: number; ai_net: number; text: string; largest: boolean }[];
+  drivers: DriverImportance[];
+  who_moved: { total: number; groups: { label: string; segment: string | null; side: Side | null; count: number; share: number }[] };
+  scenario: {
+    market_shift_pp: number;
+    loans_repaid_early: { base: number; scenario: number; change: number };
+    deposits_withdrawn_early: { base: number; scenario: number; change: number };
+    buckets: { bucket: BucketKey; base: number; scenario: number; change: number }[];
+    headline: { bucket: BucketKey; base: number; scenario: number; change: number };
+    note: string;
+  };
+}
+
+export interface ReasonChip { text: string; tone: "up" | "down" | "neutral" | "warn" }
+
+export interface AiTxn {
+  transaction_id: string;
+  book: Side;
+  entity: string;
+  location: string;
+  customer_id: string;
+  customer_segment: Segment;
+  currency: string;
+  amount: number;
+  interest_rate_pct: number;
+  market_rate_pct: number;
+  spread_pp: number;
+  transaction_date: string;
+  contractual_maturity_date: string;
+  adjusted_maturity_date: string;
+  expected_exit_date: string | null;
+  shift_days: number;
+  p_early: number;
+  p_early_lifetime: number;
+  interest_amount: number;
+  cash_at_maturity: number;
+  bucket: BucketKey | null;
+  deterministic_bucket: BucketKey | null;
+  moved: boolean;
+  days_to_maturity: number;
+  past_due: boolean;
+  reasons: ReasonChip[];
+}
+
+export interface AiTxnPage {
+  total: number;
+  page: number;
+  page_size: number;
+  calculation_date: string;
+  kpis: { count: number; cash_pulled_in: number | null; avg_p_early: number; avg_spread_pp: number };
+  summary: { assets: number; liabilities: number; net_gap: number; currency: string } | null;
+  items: AiTxn[];
+}
+
+export interface Driver {
+  feature: string;
+  label: string;
+  value: string;
+  log_odds: number;
+  effect_pp: number;
+  direction: "raises" | "lowers" | "neutral";
+}
+
+export interface AiExplanation {
+  transaction_id: string;
+  type: Side;
+  currency: string;
+  location: string;
+  customer_segment: Segment;
+  calculation_date: string;
+  p_early_base: number;
+  p_early: number;
+  elapsed_fraction: number;
+  transaction_date: string;
+  contractual_maturity_date: string;
+  expected_exit_date: string | null;
+  adjusted_maturity_date: string;
+  shift_days: number;
+  deterministic_bucket: BucketKey | null;
+  ai_bucket: BucketKey | null;
+  cash_at_maturity: number;
+  interest_rate_pct: number;
+  market_rate_pct: number;
+  spread_pp: number;
+  tenor_years: number;
+  formula: string;
+  reasons: ReasonChip[];
+  rationale: { average_probability: number; summary: string; drivers: Driver[] };
+}
+
+export interface Classification { threshold: number; accuracy: number; precision: number; recall: number; f1: number; tp: number; fp: number; fn: number; tn: number }
+
+export interface ModelCard {
+  name: string;
+  type: string;
+  historical_batch: { id: string; filename: string; as_of_date: string };
+  trained_on: number;
+  early_exits: number;
+  early_exit_rate: number;
+  iterations: number;
+  metrics: {
+    holdout?: string;
+    train_rows?: number;
+    test_rows?: number;
+    test_early_rate?: number;
+    auc?: number;
+    brier?: number;
+    brier_baseline?: number;
+    at_50?: Classification;
+    best_f1?: Classification;
+    calibration?: { predicted: number; observed: number; n: number }[];
+    in_sample_auc?: number;
+    history_rows?: number;
+    open_rows?: number;
+  };
+  importance: DriverImportance[];
+  drivers: { feature: string; label: string; coefficient: number; per: string; std: number | null }[];
+  exit_timing: { min: number; median: number; max: number; histogram: { from: number; to: number; count: number }[] };
+  assumptions: string[];
+}
+
+export interface CompareQuery extends LadderQuery {
+  currency?: string;
+  location?: string;
+  side?: Side;
+  segment?: Segment;
+  simulations?: number;
+}
+export interface WhyQuery extends LadderQuery {
+  currency?: string;
+  location?: string;
+  market_shift_pp?: number;
+}
+export interface AiTxnQuery extends LadderQuery {
+  currency?: string;
+  location?: string;
+  bucket?: BucketKey | "past_due";
+  type?: Side;
+  segment?: Segment;
+  p_min?: number;
+  p_max?: number;
+  spread_min?: number;
+  spread_max?: number;
+  moved_only?: boolean;
+  sort?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  page_size?: number;
+}
+const qb = (o: object) =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "boolean" ? (v ? "true" : undefined) : v])) as Record<string, string | number | undefined>;
+
+export const getAiLadder = (p: LadderQuery = {}) => getJson<AiLadderResponse>("/api/behavioral/ladder", q(p));
+export const getComparison = (p: CompareQuery = {}) => getJson<CompareResponse>("/api/behavioral/compare", q(p));
+export const getWhy = (p: WhyQuery = {}) => getJson<WhyResponse>("/api/behavioral/why", q(p));
+export const getAiTransactions = (p: AiTxnQuery) => getJson<AiTxnPage>("/api/behavioral/transactions", qb(p));
+export const getAiExplanation = (id: string, p: LadderQuery = {}) =>
+  getJson<AiExplanation>(`/api/behavioral/explain/${encodeURIComponent(id)}`, q(p));
+export const getModelCard = () => getJson<ModelCard>("/api/behavioral/model");
+
+/** Download a CSV that needs the auth header (fetched as a blob, then saved). */
+async function downloadCsv(path: string, params: Record<string, string | number | undefined>, filename: string) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v !== undefined && v !== "" && qs.set(k, String(v)));
+  const res = await fetch(`${API_URL}${path}${qs.size ? `?${qs}` : ""}`, { headers: authHeaders() }).catch(() => {
+    throw new ApiError("NETWORK", "Cannot reach the server.");
+  });
+  if (!res.ok) throw toApiError(res.status, await res.json().catch(() => null));
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+export const downloadAiPredictions = (p: AiTxnQuery) =>
+  downloadCsv("/api/behavioral/transactions.csv", qb({ ...p, page: undefined, page_size: undefined, sort: undefined, order: undefined }), "liquidplus_ai_predictions.csv");
+export const downloadHistoryPredictions = () =>
+  downloadCsv("/api/behavioral/history-predictions.csv", {}, "liquidplus_history_predictions.csv");

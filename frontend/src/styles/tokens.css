@@ -14,6 +14,14 @@
   /* chart series (categorical slots 1-2; colour-blind separation and >= 3:1 on --surface validated) */
   --series-asset: #2a78d6;
   --series-liability: #eb6834;
+  /* deterministic vs AI-adjusted comparison: neutral baseline + violet model (>= 3:1 on --surface) */
+  --series-det: #7b8594;
+  --series-ai: #6250d6;
+  --ai-soft: rgba(98, 80, 214, 0.16);
+  --ai-1: #5643c4;
+  --ai-2: #8a7ad6;
+  --ai-3: #b6abe9;
+  --ai-4: #dcd6f6;
   --grid: #e9edf2;
   --axis: #b8c0cc;
 
