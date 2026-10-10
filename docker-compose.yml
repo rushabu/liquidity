@@ -1,0 +1,45 @@
+# Default:            docker compose up --build            (API + web, database on Supabase)
+# Without Supabase:   docker compose --profile localdb up --build
+#                     and set DATABASE_URL=postgresql://postgres:postgres@localdb:5432/liquidplus in backend/.env
+services:
+  api:
+    build: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: true
+    environment:
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "8000:8000"
+    restart: on-failure          # lets the API wait for the local database to come up
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_MAX_UPLOAD_MB: ${VITE_MAX_UPLOAD_MB:-25}
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  localdb:
+    profiles: ["localdb"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: liquidplus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro   # the same SQL, applied on first start
+    ports:
+      - "54322:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d liquidplus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
