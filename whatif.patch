@@ -1,0 +1,843 @@
+diff --git a/README.md b/README.md
+index 4547c3c..a983481 100644
+--- a/README.md
++++ b/README.md
+@@ -133,6 +133,7 @@ Errors are always `{"error": {"code", "message", "details"}}`. Every response ca
+ | `GET /api/ingest/batches?limit=20` | any user | upload history |
+ | `GET /api/ingest/errors?batch_id=&book=&severity=&rule_code=&page=&page_size=` | any user | paginated issues (default scope: active batches) |
+ | `GET /api/ingest/errors.csv` (`book`, `severity`, `rule_code`, optional `batch_ids`) | any user | the Error report table as CSV: same columns (File, Row, Transaction, Field, Value found, Rule broken, Message, Severity), filters and order, all pages |
++| `GET /api/whatif` (`base`, `asset_shift_months`, `asset_shift_days`, `liability_shift_months`, `liability_shift_days`, `currency`, `location`) | any user | what-if tenor shifts: base vs scenario net gap per bucket, contracts that change bucket, scenario recommendations |
+ | `GET /health`, `GET /health/db` | public | liveness, and `SELECT 1` (503 if the DB is down) |
+ 
+ File-level failures return **422** and store nothing: `FILE_TYPE_UNSUPPORTED`, `FILE_EMPTY`, `FILE_UNREADABLE`, `FILE_MISSING_COLUMNS`, `FILE_WRONG_BOOK`, `AS_OF_DATE_INVALID`; `FILE_TOO_LARGE` is **413**; `401` no/invalid token; `403` role not allowed.
+diff --git a/backend/app/core/behavioral.py b/backend/app/core/behavioral.py
+index bfd68e4..90f9d86 100644
+--- a/backend/app/core/behavioral.py
++++ b/backend/app/core/behavioral.py
+@@ -501,7 +501,8 @@ def _when(b: dict) -> str:
+     return f" by {date.fromisoformat(d):%d %b %Y}" if d else ""
+ 
+ 
+-def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> list[dict]:
++def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, view: str = "AI-adjusted",
++              base: str = "contractual view", cause: str = "Predicted early withdrawals") -> list[dict]:
+     """One-line treasury actions from the AI-adjusted (behavioural) gap, read cumulatively like a treasury desk:
+ 
+     1. a surplus in an earlier bucket is rolled forward to cover a later shortfall (no new money needed);
+@@ -545,7 +546,7 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> l
+             if need > 0:                        # 2. raise the rest
+                 add(b, "fund", "high" if key in SHORT_TERM else "medium",
+                     f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
+-                    f"AI-adjusted {key} gap is −{money(-ai)} (contractual view {'+' if b['det_net'] >= 0 else '−'}"
++                    f"{view} {key} gap is −{money(-ai)} ({base} {'+' if b['det_net'] >= 0 else '−'}"
+                     f"{money(abs(b['det_net']))})" + (f"; earlier surplus covers {money(-ai - need)}." if -ai - need > 0
+                                                       else "."), need)
+         if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
+@@ -556,7 +557,7 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> l
+         dl = b["ai_liabilities"] - b["det_liabilities"]
+         if ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):   # 4b. retention
+             add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
+-                f"Predicted early withdrawals add {money(dl)} of outflows to {key}; see Drill-down for the clients.", dl)
++                f"{cause} add {money(dl)} of outflows to {key}; see the contracts list for the clients.", dl)
+ 
+     for src, left in pool:                      # 3. surplus nobody needs later
+         if left <= 0:
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 72f62c2..829c11c 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -12,7 +12,7 @@ from sqlalchemy.exc import OperationalError
+ 
+ from .config import get_settings
+ from .logging_setup import request_id_var, setup_logging
+-from .routers import behavioral, health, ingest, ladder
++from .routers import behavioral, health, ingest, ladder, whatif
+ from .services.errors import ApiError
+ 
+ settings = get_settings()
+@@ -91,6 +91,7 @@ app.include_router(health.router)
+ app.include_router(ingest.router)
+ app.include_router(ladder.router)
+ app.include_router(behavioral.router)
++app.include_router(whatif.router)
+ 
+ 
+ @app.on_event("startup")
+diff --git a/backend/app/routers/whatif.py b/backend/app/routers/whatif.py
+new file mode 100644
+index 0000000..b22bff9
+--- /dev/null
++++ b/backend/app/routers/whatif.py
+@@ -0,0 +1,183 @@
++"""What-if scenarios: shift asset and/or liability maturities (e.g. liabilities 1 month earlier, assets 2 weeks
++later) and see the effect on the gap ladder, starting from either the contractual (deterministic) ladder or the
++AI-adjusted one.
++
++Rules
++* A shift moves the maturity used for bucketing: calendar months first (month-end clamps, like the ladder),
++  then days. Negative = earlier, positive = later. Cash amounts never change, so the total net gap is the same.
++* A maturity shifted before the calculation date is due now: it lands in 0-1M (it does not disappear).
++* Contracts that are already past due in the base view keep their base treatment (past-due policy).
++* Location scoping is the same as every other ladder: a standard user only sees their own location.
++"""
++
++from __future__ import annotations
++
++from datetime import date, timedelta
++from decimal import Decimal
++from typing import Literal
++
++from fastapi import APIRouter, Depends, Query
++
++from ..core import behavioral as bm
++from ..core import ladder as det
++from ..db import get_engine
++from ..deps import CurrentUser, get_current_user
++from ..services import behavioral_queries as bq
++from ..services.errors import ApiError
++from .ladder import CURRENCIES, Policy
++
++router = APIRouter(prefix="/api/whatif", tags=["what-if"])
++
++Base = Literal["deterministic", "ai"]
++MAX_MOVERS = 100
++
++
++def shift_date(d: date, months: int, days: int) -> date:
++    return det.add_months(d, months) + timedelta(days=days)
++
++
++def describe(months: int, days: int) -> str:
++    """'1 month earlier', '2 weeks later', '+1 months -3 days' (mixed signs), 'unchanged'."""
++    if not months and not days:
++        return "unchanged"
++    if months and days and (months < 0) != (days < 0):
++        return f"{months:+d} months {days:+d} days"
++    parts = []
++    if months:
++        parts.append(f"{abs(months)} month{'s' if abs(months) != 1 else ''}")
++    if days:
++        weeks, rest = divmod(abs(days), 7)
++        parts.append(f"{weeks} week{'s' if weeks != 1 else ''}" if not rest
++                     else f"{abs(days)} day{'s' if abs(days) != 1 else ''}")
++    return " ".join(parts) + (" earlier" if (months or days) < 0 else " later")
++
++
++def apply_shift(items: list[dict], calc: date, shifts: dict[str, tuple[int, int]]) -> list[dict]:
++    """Base ladder items -> scenario items (new date and bucket per contract)."""
++    buckets = det.build_buckets(calc)
++    out = []
++    for t in items:
++        months, days = shifts[t["book"]]
++        base_date = t["effective_maturity_date"]
++        new, pulled = base_date, False
++        if (months or days) and not t["past_due"]:
++            new = shift_date(base_date, months, days)
++            if new < calc:
++                new, pulled = calc, True
++        bucket = t["bucket"] if t["past_due"] else det.assign_bucket(new, buckets)
++        out.append({**t, "base_date": base_date, "base_bucket": t["bucket"], "scenario_date": new,
++                    "scenario_bucket": bucket, "pulled_to_today": pulled})
++    return out
++
++
++def bucket_table(items: list[dict], calc: date) -> list[dict]:
++    z = Decimal(0)
++    cell = {(v, k): {"a": z, "l": z} for v in ("base", "scen") for k in det.BUCKET_KEYS}
++    moved_in = {k: 0 for k in det.BUCKET_KEYS}
++    moved_out = {k: 0 for k in det.BUCKET_KEYS}
++    for t in items:
++        side = "a" if t["book"] == "asset" else "l"
++        cell[("base", t["base_bucket"])][side] += t["cash_at_maturity"]
++        cell[("scen", t["scenario_bucket"])][side] += t["cash_at_maturity"]
++        if t["base_bucket"] != t["scenario_bucket"]:
++            moved_out[t["base_bucket"]] += 1
++            moved_in[t["scenario_bucket"]] += 1
++    rows, base_cum, scen_cum = [], 0.0, 0.0
++    for b in det.build_buckets(calc):
++        ba, bl = float(cell[("base", b.key)]["a"]), float(cell[("base", b.key)]["l"])
++        sa, sl = float(cell[("scen", b.key)]["a"]), float(cell[("scen", b.key)]["l"])
++        base_cum += ba - bl
++        scen_cum += sa - sl
++        rows.append({"bucket": b.key, "label": b.label, "start_date": b.start.isoformat(),
++                     "end_date": b.end.isoformat() if b.end else None,
++                     "base_assets": round(ba, 2), "base_liabilities": round(bl, 2), "base_net": round(ba - bl, 2),
++                     "scen_assets": round(sa, 2), "scen_liabilities": round(sl, 2), "scen_net": round(sa - sl, 2),
++                     "delta": round((sa - sl) - (ba - bl), 2), "base_cum": round(base_cum, 2),
++                     "scen_cum": round(scen_cum, 2), "moved_in": moved_in[b.key], "moved_out": moved_out[b.key]})
++    return rows
++
++
++def _base(user: CurrentUser, base: str, as_of_date: date | None, calc_date: date | None,
++          policy: str) -> tuple[date, date, list[dict]]:
++    if base == "ai":
++        from .behavioral import _context                     # needs the historical model
++        c = _context(user, as_of_date, calc_date, policy)
++        return c["snapshot"], c["calc"], c["ai_items"]
++    snapshot, _, rows = bq.fetch_live(get_engine(), user, as_of_date)
++    calc = calc_date or snapshot
++    items, _ = det.classify(rows, calc, policy)
++    return snapshot, calc, items
++
++
++@router.get("")
++def what_if(
++    base: Base = Query("deterministic", description="start from the contractual or the AI-adjusted ladder"),
++    asset_shift_months: int = Query(0, ge=-24, le=24, description="negative = earlier"),
++    asset_shift_days: int = Query(0, ge=-365, le=365, description="negative = earlier (2 weeks = 14)"),
++    liability_shift_months: int = Query(0, ge=-24, le=24),
++    liability_shift_days: int = Query(0, ge=-365, le=365),
++    currency: str | None = Query(None, description="default: first currency in the snapshot"),
++    location: str | None = None,
++    as_of_date: date | None = None,
++    calc_date: date | None = None,
++    past_due_policy: Policy = "exclude",
++    user: CurrentUser = Depends(get_current_user),
++):
++    """Base vs scenario net gap per bucket (with cumulative gap), contracts that change bucket, and the
++    recommended actions for the scenario."""
++    if currency and currency not in CURRENCIES:
++        raise ApiError(422, "INVALID_FILTER", f"currency must be one of {sorted(CURRENCIES)}")
++    snapshot, calc, items = _base(user, base, as_of_date, calc_date, past_due_policy)
++    currencies = sorted({t["currency"] for t in items})
++    if not currencies:
++        raise ApiError(409, "SNAPSHOT_NOT_READY", "No transactions in the snapshot you can see")
++    currency = currency or currencies[0]
++    locations = sorted({t["location"] for t in items if t["currency"] == currency})
++    if location and location not in locations:
++        raise ApiError(422, "INVALID_FILTER", f"location must be one of {locations} for {currency}")
++
++    shifts = {"asset": (asset_shift_months, asset_shift_days),
++              "liability": (liability_shift_months, liability_shift_days)}
++    scoped = [t for t in items if t["currency"] == currency and (not location or t["location"] == location)]
++    scen = apply_shift(scoped, calc, shifts)
++    rows = bucket_table(scen, calc)
++
++    movers = [t for t in scen if t["base_bucket"] != t["scenario_bucket"]]
++    movers.sort(key=lambda t: (-t["cash_at_maturity"], t["transaction_id"]))
++    worst = lambda key: min(rows, key=lambda r: r[key])
++    recs = bm.recommend(currency, location, [
++        {"bucket": r["bucket"], "start_date": r["start_date"], "det_net": r["base_net"], "ai_net": r["scen_net"],
++         "det_assets": r["base_assets"], "ai_assets": r["scen_assets"],
++         "det_liabilities": r["base_liabilities"], "ai_liabilities": r["scen_liabilities"]} for r in rows],
++        view="Scenario", base="base", cause="Deposits shifted earlier")
++    label = f"Assets {describe(*shifts['asset'])} · liabilities {describe(*shifts['liability'])}"
++    return {
++        "metadata": {"base": base, "as_of_date": snapshot.isoformat(), "calculation_date": calc.isoformat(),
++                     "past_due_policy": past_due_policy, "scope_location": None if user.is_support else user.location,
++                     "currency": currency, "location": location, "currencies": currencies, "locations": locations,
++                     "shifts": {k: {"months": m, "days": d, "text": describe(m, d)} for k, (m, d) in shifts.items()},
++                     "scenario": label},
++        "kpis": {
++            "total": len(scen), "moved": len(movers),
++            "shifted": sum(1 for t in scen if t["scenario_date"] != t["base_date"]),
++            "pulled_to_today": sum(1 for t in scen if t["pulled_to_today"]),
++            "worst_base": {"bucket": worst("base_net")["bucket"], "net": worst("base_net")["base_net"]},
++            "worst_scenario": {"bucket": worst("scen_net")["bucket"], "net": worst("scen_net")["scen_net"]},
++            "total_net": rows[-1]["scen_cum"],
++        },
++        "buckets": rows,
++        "movers_total": len(movers),
++        "movers": [{"transaction_id": t["transaction_id"], "book": t["book"], "location": t["location"],
++                    "customer_segment": t.get("customer_segment"), "cash_at_maturity": float(t["cash_at_maturity"]),
++                    "base_date": t["base_date"].isoformat(), "scenario_date": t["scenario_date"].isoformat(),
++                    "base_bucket": t["base_bucket"], "scenario_bucket": t["scenario_bucket"],
++                    "pulled_to_today": t["pulled_to_today"]} for t in movers[:MAX_MOVERS]],
++        "recommendations": recs,
++        "notes": [
++            f"Base: {'AI-adjusted (behavioural) maturities' if base == 'ai' else 'contractual maturities'}; "
++            "the shift is applied on top of it.",
++            "Months are calendar months (month-end clamps), then days. Amounts never change, only dates, so the "
++            "total net gap is identical in both columns.",
++            "A maturity shifted before the calculation date is treated as due now (0-1M).",
++        ],
++    }
+diff --git a/backend/tests/integration/test_whatif_api.py b/backend/tests/integration/test_whatif_api.py
+new file mode 100644
+index 0000000..3a024ee
+--- /dev/null
++++ b/backend/tests/integration/test_whatif_api.py
+@@ -0,0 +1,102 @@
++"""What-if tenor shifts against the real sample files."""
++from datetime import date, timedelta
++
++import pytest
++
++from app.core.ladder import add_months
++from tests.integration.conftest import auth, upload
++
++
++@pytest.fixture(autouse=True)
++def fresh_cache():
++    from app.services import behavioral_queries
++    behavioral_queries.invalidate()
++    yield
++
++
++@pytest.fixture
++def books(client):
++    for b in ("asset", "liability"):
++        assert upload(client, b).status_code == 201
++
++
++def wi(client, headers=None, **params):
++    r = client.get("/api/whatif", params=params, headers=headers or auth())
++    assert r.status_code == 200, r.text
++    return r.json()
++
++
++def test_no_shift_is_the_deterministic_ladder(client, books):
++    w = wi(client, currency="EUR")
++    det = {r["bucket"]: r for r in client.get("/api/ladder", headers=auth()).json()["ladder"]
++           if r["currency"] == "EUR" and r["scope"] == "currency_total"}
++    assert w["kpis"]["moved"] == 0 and w["kpis"]["shifted"] == 0 and w["movers"] == []
++    for b in w["buckets"]:
++        assert b["base_net"] == pytest.approx(det[b["bucket"]]["net_gap"], abs=0.01)
++        assert b["scen_net"] == b["base_net"] and b["delta"] == 0
++    assert w["metadata"]["scenario"] == "Assets unchanged · liabilities unchanged"
++
++
++def test_liabilities_one_month_earlier(client, books):
++    w = wi(client, currency="EUR", liability_shift_months=-1)
++    calc = date.fromisoformat(w["metadata"]["calculation_date"])
++    assert w["metadata"]["shifts"]["liability"]["text"] == "1 month earlier"
++    assert w["kpis"]["moved"] > 0 and w["kpis"]["pulled_to_today"] > 0
++    for b in w["buckets"]:
++        assert b["scen_assets"] == b["base_assets"]                       # assets untouched
++    assert sum(b["scen_liabilities"] for b in w["buckets"]) == pytest.approx(
++        sum(b["base_liabilities"] for b in w["buckets"]), abs=0.05)      # amounts never change
++    assert w["buckets"][-1]["scen_cum"] == pytest.approx(w["buckets"][-1]["base_cum"], abs=0.05)
++    assert w["buckets"][0]["scen_liabilities"] > w["buckets"][0]["base_liabilities"]   # outflows arrive sooner
++    for t in w["movers"]:
++        assert t["book"] == "liability"
++        want = max(calc, add_months(date.fromisoformat(t["base_date"]), -1))
++        assert t["scenario_date"] == want.isoformat() and t["pulled_to_today"] == (want == calc)
++    assert [m["cash_at_maturity"] for m in w["movers"]] == sorted((m["cash_at_maturity"] for m in w["movers"]), reverse=True)
++
++
++def test_assets_two_weeks_later_and_both_sides(client, books):
++    w = wi(client, currency="USD", asset_shift_days=14)
++    assert w["metadata"]["shifts"]["asset"]["text"] == "2 weeks later" and w["kpis"]["pulled_to_today"] == 0
++    for b in w["buckets"]:
++        assert b["scen_liabilities"] == b["base_liabilities"]
++    for t in w["movers"]:
++        assert t["book"] == "asset"
++        assert date.fromisoformat(t["scenario_date"]) - date.fromisoformat(t["base_date"]) == timedelta(days=14)
++    both = wi(client, currency="USD", asset_shift_days=14, liability_shift_months=-1)
++    assert {t["book"] for t in both["movers"]} == {"asset", "liability"}
++    assert both["metadata"]["scenario"] == "Assets 2 weeks later · liabilities 1 month earlier"
++    moved_in = sum(b["moved_in"] for b in both["buckets"])
++    assert moved_in == sum(b["moved_out"] for b in both["buckets"]) == both["kpis"]["moved"]
++
++
++def test_scenario_recommendations_cover_every_shortfall(client, books):
++    w = wi(client, currency="EUR", liability_shift_months=-1)
++    for b in w["buckets"]:
++        covered = sum(r["amount"] for r in w["recommendations"]
++                      if r["bucket"] == b["bucket"] and r["kind"] in ("cover", "fund"))
++        assert covered == pytest.approx(max(0.0, -b["scen_net"]), abs=0.05)
++
++
++def test_ai_base_needs_history_and_matches_the_ai_ladder(client, books):
++    r = client.get("/api/whatif", params={"base": "ai"}, headers=auth())
++    assert r.status_code == 409 and r.json()["error"]["code"] == "MODEL_NOT_READY"
++    assert upload(client, "historical").status_code == 201
++    w = wi(client, base="ai", currency="EUR")
++    ai = client.get("/api/behavioral/compare", params={"currency": "EUR"}, headers=auth()).json()["buckets"]
++    for b, a in zip(w["buckets"], ai, strict=True):
++        assert b["base_net"] == pytest.approx(a["ai_net"], abs=0.05)
++    s = wi(client, base="ai", currency="EUR", liability_shift_days=-30)
++    assert s["metadata"]["base"] == "ai" and s["kpis"]["moved"] > 0
++
++
++def test_location_scope_and_validation(client, books):
++    assert client.get("/api/whatif").status_code == 401
++    sg = wi(client, auth("standard", "Singapore"), liability_shift_months=-1)
++    assert sg["metadata"]["scope_location"] == "Singapore"
++    assert {t["location"] for t in sg["movers"]} <= {"Singapore"}
++    paris = wi(client, currency="EUR", location="Paris", asset_shift_months=2)
++    assert paris["metadata"]["location"] == "Paris" and {t["location"] for t in paris["movers"]} <= {"Paris"}
++    for params in ({"asset_shift_months": 25}, {"liability_shift_days": -400}, {"currency": "XXX"},
++                   {"currency": "EUR", "location": "Atlantis"}, {"base": "magic"}):
++        assert client.get("/api/whatif", params=params, headers=auth()).status_code == 422, params
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index f2537da..804dfb8 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,6 +1,7 @@
+ import { Navigate, Route, Routes } from "react-router-dom";
+ import { TopBar } from "./components/TopBar";
+ import { AiGapPage } from "./pages/AiGapPage";
++import { WhatIfPage } from "./pages/WhatIfPage";
+ import { LadderPage } from "./pages/LadderPage";
+ import { UploadPage } from "./pages/UploadPage";
+ 
+@@ -13,6 +14,7 @@ export default function App() {
+         <Route path="/upload" element={<UploadPage />} />
+         <Route path="/ladder" element={<LadderPage />} />
+         <Route path="/ai" element={<AiGapPage />} />
++        <Route path="/whatif" element={<WhatIfPage />} />
+         <Route path="/ai-ladder" element={<Navigate to="/ai?view=ladder" replace />} />
+         <Route path="/compare" element={<Navigate to="/ai" replace />} />
+         <Route path="*" element={<Navigate to="/upload" replace />} />
+diff --git a/frontend/src/api/client.ts b/frontend/src/api/client.ts
+index 355369e..aa0e997 100644
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -613,3 +613,79 @@ export const downloadAiPredictions = (p: AiTxnQuery) =>
+   downloadCsv("/api/behavioral/transactions.csv", qb({ ...p, page: undefined, page_size: undefined, sort: undefined, order: undefined }), "liquidplus_ai_predictions.csv");
+ export const downloadHistoryPredictions = () =>
+   downloadCsv("/api/behavioral/history-predictions.csv", {}, "liquidplus_history_predictions.csv");
++
++/* ------------------------------------------------------------------ what-if tenor shifts */
++export type WhatIfBase = "deterministic" | "ai";
++
++export interface WhatIfQuery {
++  base?: WhatIfBase;
++  asset_shift_months?: number;
++  asset_shift_days?: number;
++  liability_shift_months?: number;
++  liability_shift_days?: number;
++  currency?: string;
++  location?: string;
++  calc_date?: string;
++}
++
++export interface WhatIfBucket {
++  bucket: BucketKey;
++  label: string;
++  start_date: string;
++  end_date: string | null;
++  base_assets: number;
++  base_liabilities: number;
++  base_net: number;
++  scen_assets: number;
++  scen_liabilities: number;
++  scen_net: number;
++  delta: number;
++  base_cum: number;
++  scen_cum: number;
++  moved_in: number;
++  moved_out: number;
++}
++
++export interface WhatIfMover {
++  transaction_id: string;
++  book: "asset" | "liability";
++  location: string;
++  customer_segment: string | null;
++  cash_at_maturity: number;
++  base_date: string;
++  scenario_date: string;
++  base_bucket: BucketKey;
++  scenario_bucket: BucketKey;
++  pulled_to_today: boolean;
++}
++
++export interface WhatIfResponse {
++  metadata: {
++    base: WhatIfBase;
++    as_of_date: string;
++    calculation_date: string;
++    currency: string;
++    location: string | null;
++    currencies: string[];
++    locations: string[];
++    scope_location: string | null;
++    shifts: Record<"asset" | "liability", { months: number; days: number; text: string }>;
++    scenario: string;
++  };
++  kpis: {
++    total: number;
++    moved: number;
++    shifted: number;
++    pulled_to_today: number;
++    worst_base: { bucket: BucketKey; net: number };
++    worst_scenario: { bucket: BucketKey; net: number };
++    total_net: number;
++  };
++  buckets: WhatIfBucket[];
++  movers_total: number;
++  movers: WhatIfMover[];
++  recommendations: Recommendation[];
++  notes: string[];
++}
++
++export const getWhatIf = (p: WhatIfQuery = {}) => cachedJson<WhatIfResponse>("/api/whatif", q(p));
+diff --git a/frontend/src/components/TopBar.tsx b/frontend/src/components/TopBar.tsx
+index d07d14e..c63c615 100644
+--- a/frontend/src/components/TopBar.tsx
++++ b/frontend/src/components/TopBar.tsx
+@@ -14,6 +14,7 @@ export function TopBar() {
+         <NavLink to="/upload">Data ingestion</NavLink>
+         <NavLink to="/ladder">Gap ladder · deterministic</NavLink>
+         <NavLink to="/ai" className="ai-nav">AI gap ladder <span className="ai-badge">AI</span></NavLink>
++        <NavLink to="/whatif">What-if</NavLink>
+       </nav>
+     </header>
+   );
+diff --git a/frontend/src/pages/WhatIfPage.test.tsx b/frontend/src/pages/WhatIfPage.test.tsx
+new file mode 100644
+index 0000000..11b1420
+--- /dev/null
++++ b/frontend/src/pages/WhatIfPage.test.tsx
+@@ -0,0 +1,83 @@
++import { render, screen, waitFor, within } from "@testing-library/react";
++import userEvent from "@testing-library/user-event";
++import { MemoryRouter } from "react-router-dom";
++import * as client from "../api/client";
++import { clearSticky } from "../lib/sticky";
++import { toParams, WhatIfPage } from "./WhatIfPage";
++
++const B = ["0-1M", "1-3M", "3-12M", "1-5Y", ">5Y"] as const;
++
++const resp = (q: client.WhatIfQuery): client.WhatIfResponse => {
++  const shifted = (q.liability_shift_months ?? 0) !== 0 || (q.asset_shift_days ?? 0) !== 0;
++  return {
++    metadata: { base: q.base ?? "deterministic", as_of_date: "2026-10-10", calculation_date: "2026-10-10", currency: q.currency ?? "EUR",
++      location: q.location ?? null, currencies: ["EUR", "USD"], locations: ["Paris", "London"], scope_location: null,
++      shifts: { asset: { months: 0, days: q.asset_shift_days ?? 0, text: "x" }, liability: { months: q.liability_shift_months ?? 0, days: 0, text: "y" } },
++      scenario: shifted ? "Assets unchanged · liabilities 1 month earlier" : "Assets unchanged · liabilities unchanged" },
++    kpis: { total: 373, moved: shifted ? 12 : 0, shifted: shifted ? 300 : 0, pulled_to_today: shifted ? 4 : 0,
++      worst_base: { bucket: "3-12M", net: -591.8e6 }, worst_scenario: { bucket: "3-12M", net: shifted ? -640e6 : -591.8e6 }, total_net: -392.4e6 },
++    buckets: B.map((b, i) => ({ bucket: b, label: b, start_date: "2026-10-10", end_date: null, base_assets: 0, base_liabilities: 0,
++      base_net: [140.6e6, 19.8e6, -591.8e6, -28.9e6, 67.9e6][i], scen_assets: 0, scen_liabilities: 0,
++      scen_net: [140.6e6, 19.8e6, -591.8e6, -28.9e6, 67.9e6][i] + (shifted && i === 0 ? -48.2e6 : 0),
++      delta: shifted && i === 0 ? -48.2e6 : 0, base_cum: 0, scen_cum: 0, moved_in: 0, moved_out: 0 })),
++    movers_total: shifted ? 1 : 0,
++    movers: shifted ? [{ transaction_id: "LIA-000042", book: "liability", location: "Paris", customer_segment: "Retail", cash_at_maturity: 1.2e6,
++      base_date: "2026-11-15", scenario_date: "2026-10-15", base_bucket: "1-3M", scenario_bucket: "0-1M", pulled_to_today: false }] : [],
++    recommendations: [{ currency: "EUR", location: null, scope: "EUR", bucket: "3-12M", severity: "medium", kind: "fund",
++      action: "Raise 6–12M funding – EUR 451.2M via term deposits / CDs by 11 Jan 2027", rationale: "Why.", amount: 451.2e6, deterministic_net: 0, ai_net: 0 }],
++    notes: ["note"],
++  };
++};
++
++const spy = vi.spyOn(client, "getWhatIf");
++beforeEach(() => { clearSticky(); client.clearAiCache(); spy.mockReset(); spy.mockImplementation(async (q) => resp(q ?? {})); });
++
++const page = () => render(<MemoryRouter><WhatIfPage /></MemoryRouter>);
++
++it("converts the shift controls to API parameters", () => {
++  expect(toParams({ n: 1, unit: "months", dir: "earlier" })).toEqual({ months: -1, days: 0 });
++  expect(toParams({ n: 2, unit: "weeks", dir: "later" })).toEqual({ months: 0, days: 14 });
++  expect(toParams({ n: 10, unit: "days", dir: "earlier" })).toEqual({ months: 0, days: -10 });
++  expect(toParams({ n: 99, unit: "months", dir: "later" })).toEqual({ months: 24, days: 0 });
++});
++
++it("starts with liabilities 1 month earlier and shows impact, actions and movers", async () => {
++  page();
++  expect(await screen.findByText("Assets unchanged · liabilities 1 month earlier")).toBeInTheDocument();
++  expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ base: "deterministic", liability_shift_months: -1, liability_shift_days: 0, asset_shift_days: 0 }));
++  const table = screen.getByRole("region", { name: "Bucket table" });
++  expect(within(table).getByText("−48.2M")).toBeInTheDocument();
++  expect(screen.getByText(/Raise 6–12M funding – EUR 451.2M/)).toBeInTheDocument();
++  expect(screen.getByText("LIA-000042")).toBeInTheDocument();
++});
++
++it("applies presets, the base toggle and the currency filter", async () => {
++  page();
++  await screen.findByText("LIA-000042");
++  await userEvent.click(screen.getByRole("button", { name: "Stress: both" }));
++  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ asset_shift_days: 14, liability_shift_months: -1 })));
++  await userEvent.click(screen.getByRole("tab", { name: "AI-adjusted base" }));
++  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ base: "ai" })));
++  await userEvent.selectOptions(screen.getByLabelText("Currency"), "USD");
++  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
++  await userEvent.click(screen.getByRole("button", { name: "Reset" }));
++  expect(await screen.findByText("No contract changes bucket in this scenario.")).toBeInTheDocument();
++});
++
++it("edits a shift by hand: amount, unit and direction", async () => {
++  page();
++  await screen.findByText("LIA-000042");
++  const amount = screen.getByLabelText("Asset maturities (loans): amount");
++  await userEvent.clear(amount);
++  await userEvent.type(amount, "3");
++  await userEvent.selectOptions(screen.getByLabelText("Asset maturities (loans): unit"), "weeks");
++  const dir = screen.getByRole("radiogroup", { name: "Asset maturities (loans): direction" });
++  await userEvent.click(within(dir).getByRole("radio", { name: "later" }));
++  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ asset_shift_days: 21, asset_shift_months: 0 })));
++});
++
++it("shows the server error", async () => {
++  spy.mockRejectedValue(new client.ApiError("MODEL_NOT_READY", "The behavioural model needs the historical log."));
++  page();
++  expect(await screen.findByRole("alert")).toHaveTextContent("historical log");
++});
+diff --git a/frontend/src/pages/WhatIfPage.tsx b/frontend/src/pages/WhatIfPage.tsx
+new file mode 100644
+index 0000000..c091185
+--- /dev/null
++++ b/frontend/src/pages/WhatIfPage.tsx
+@@ -0,0 +1,235 @@
++import { useEffect, useMemo, useRef, useState } from "react";
++import { getWhatIf, type ApiError, type WhatIfBase, type WhatIfBucket, type WhatIfQuery, type WhatIfResponse } from "../api/client";
++import { Actions } from "../components/ai/CompareView";
++import { formatInt, formatMoney, formatSignedCompact } from "../lib/format";
++import { useSticky } from "../lib/sticky";
++
++type Unit = "days" | "weeks" | "months";
++type Dir = "earlier" | "later";
++interface Shift { n: number; unit: Unit; dir: Dir }
++
++const NONE: Shift = { n: 0, unit: "months", dir: "earlier" };
++const MAX: Record<Unit, number> = { days: 365, weeks: 52, months: 24 };
++
++/** {2, weeks, later} -> {months: 0, days: 14}; {1, months, earlier} -> {months: -1, days: 0} */
++export function toParams(s: Shift): { months: number; days: number } {
++  const n = Math.max(0, Math.min(MAX[s.unit], Math.round(s.n || 0))) * (s.dir === "earlier" ? -1 : 1);
++  if (s.unit === "months") return { months: n, days: 0 };
++  return { months: 0, days: s.unit === "weeks" ? n * 7 : n };
++}
++
++const PRESETS: { label: string; asset: Shift; liability: Shift }[] = [
++  { label: "Liabilities 1 month earlier", asset: NONE, liability: { n: 1, unit: "months", dir: "earlier" } },
++  { label: "Assets 2 weeks later", asset: { n: 2, unit: "weeks", dir: "later" }, liability: NONE },
++  { label: "Stress: both", asset: { n: 2, unit: "weeks", dir: "later" }, liability: { n: 1, unit: "months", dir: "earlier" } },
++  { label: "Reset", asset: NONE, liability: NONE },
++];
++
++function ShiftControl({ id, title, hint, value, onChange }: { id: string; title: string; hint: string; value: Shift; onChange: (s: Shift) => void }) {
++  return (
++    <fieldset className="shift-control">
++      <legend>{title}</legend>
++      <div className="shift-inputs">
++        <label htmlFor={`${id}-n`} className="sr-only">{title}: amount</label>
++        <input id={`${id}-n`} type="number" min={0} max={MAX[value.unit]} step={1} inputMode="numeric" value={value.n}
++               onChange={(e) => onChange({ ...value, n: Math.max(0, Math.min(MAX[value.unit], Number(e.target.value) || 0)) })} />
++        <label htmlFor={`${id}-unit`} className="sr-only">{title}: unit</label>
++        <select id={`${id}-unit`} value={value.unit} onChange={(e) => {
++          const unit = e.target.value as Unit;
++          onChange({ ...value, unit, n: Math.min(value.n, MAX[unit]) });
++        }}>
++          <option value="days">days</option><option value="weeks">weeks</option><option value="months">months</option>
++        </select>
++        <div className="segmented small" role="radiogroup" aria-label={`${title}: direction`}>
++          {(["earlier", "later"] as Dir[]).map((d) => (
++            <button key={d} type="button" role="radio" aria-checked={value.dir === d} aria-selected={value.dir === d}
++                    onClick={() => onChange({ ...value, dir: d })}>{d}</button>
++          ))}
++        </div>
++      </div>
++      <small className="meta">{hint}</small>
++    </fieldset>
++  );
++}
++
++/** Base vs scenario net gap per bucket, as paired columns around a zero line. */
++function WhatIfChart({ rows, currency }: { rows: WhatIfBucket[]; currency: string }) {
++  const W = 560, H = 230, top = 10, bottom = 44, left = 8;
++  const max = Math.max(1, ...rows.flatMap((r) => [Math.abs(r.base_net), Math.abs(r.scen_net)]));
++  const y0 = top + (H - top - bottom) / 2;
++  const scale = (H - top - bottom) / 2 / max;
++  const slot = (W - left * 2) / rows.length;
++  const bw = Math.min(28, slot / 3.2);
++  return (
++    <figure className="whatif-chart">
++      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Net gap per bucket, base vs scenario, ${currency}`}>
++        <line x1={left} x2={W - left} y1={y0} y2={y0} className="axis" />
++        {rows.map((r, i) => {
++          const cx = left + slot * i + slot / 2;
++          const bar = (v: number, x: number, cls: string, label: string) => {
++            const h = Math.max(1, Math.abs(v) * scale);
++            return <rect key={cls} x={x} y={v >= 0 ? y0 - h : y0} width={bw} height={h} rx={3} className={cls}><title>{label}: {formatMoney(v)} {currency}</title></rect>;
++          };
++          return (
++            <g key={r.bucket}>
++              {bar(r.base_net, cx - bw - 2, "base", `${r.bucket} base`)}
++              {bar(r.scen_net, cx + 2, "scen", `${r.bucket} scenario`)}
++              <text x={cx} y={H - bottom + 18} textAnchor="middle" className="tick">{r.bucket}</text>
++              <text x={cx} y={H - bottom + 34} textAnchor="middle" className="tick mono" data-tone={r.delta < 0 ? "shortfall" : r.delta > 0 ? "surplus" : undefined}>
++                {r.delta ? formatSignedCompact(r.delta) : "±0"}
++              </text>
++            </g>
++          );
++        })}
++      </svg>
++      <figcaption className="legend">
++        <span><i className="key base" /> Base</span><span><i className="key scen" /> Scenario</span>
++        <span className="meta">Figures under each bucket: change in net gap</span>
++      </figcaption>
++    </figure>
++  );
++}
++
++/** What-if: shift asset and/or liability maturities and see the effect on the gap ladder. */
++export function WhatIfPage() {
++  const [base, setBase] = useSticky<WhatIfBase>("wi.base", "deterministic");
++  const [asset, setAsset] = useSticky<Shift>("wi.asset", NONE);
++  const [liability, setLiability] = useSticky<Shift>("wi.liability", { n: 1, unit: "months", dir: "earlier" });
++  const [currency, setCurrency] = useSticky("wi.currency", "");
++  const [location, setLocation] = useSticky("wi.location", "");
++  const [data, setData] = useSticky<WhatIfResponse | null>("wi.data", null);
++  const [error, setError] = useState<ApiError | null>(null);
++  const [busy, setBusy] = useState(false);
++  const seq = useRef(0);
++
++  const query = useMemo<WhatIfQuery>(() => {
++    const a = toParams(asset), l = toParams(liability);
++    return { base, currency: currency || undefined, location: location || undefined,
++             asset_shift_months: a.months, asset_shift_days: a.days, liability_shift_months: l.months, liability_shift_days: l.days };
++  }, [base, asset, liability, currency, location]);
++
++  useEffect(() => {
++    const mine = ++seq.current;
++    const t = setTimeout(() => {                                // one request after the inputs stop changing
++      setBusy(true); setError(null);
++      getWhatIf(query).then((d) => {
++        if (mine !== seq.current) return;
++        setData(d);
++        if (!currency) setCurrency(d.metadata.currency);
++      }, (e: ApiError) => { if (mine === seq.current) setError(e); })
++        .finally(() => { if (mine === seq.current) setBusy(false); });
++    }, 250);
++    return () => clearTimeout(t);
++  }, [JSON.stringify(query)]);   // eslint-disable-line react-hooks/exhaustive-deps
++
++  const md = data?.metadata, k = data?.kpis;
++  const ccy = md?.currency ?? currency;
++
++  return (
++    <main className="page whatif-page">
++      <div className="page-head">
++        <div>
++          <h1>What-if scenarios</h1>
++          <p>Shift asset and/or liability maturities and see the effect on the gap ladder{md && <> · calculation date {md.calculation_date}</>}</p>
++        </div>
++        <div className="segmented" role="tablist" aria-label="Base ladder">
++          <button type="button" role="tab" aria-selected={base === "deterministic"} onClick={() => setBase("deterministic")}>Contractual base</button>
++          <button type="button" role="tab" aria-selected={base === "ai"} onClick={() => setBase("ai")}>AI-adjusted base</button>
++        </div>
++      </div>
++
++      <section className="card whatif-controls" aria-label="Scenario">
++        <div className="shift-grid">
++          <ShiftControl id="liab" title="Liability maturities (deposits)" hint="Earlier = deposits leave sooner (outflow stress)." value={liability} onChange={setLiability} />
++          <ShiftControl id="asset" title="Asset maturities (loans)" hint="Later = loan repayments arrive later (inflow delay)." value={asset} onChange={setAsset} />
++          <div className="filters">
++            <label>Currency
++              <select value={ccy} onChange={(e) => { setCurrency(e.target.value); setLocation(""); }}>
++                {(md?.currencies ?? (ccy ? [ccy] : [])).map((c) => <option key={c} value={c}>{c}</option>)}
++              </select>
++            </label>
++            <label>Location
++              <select value={location} onChange={(e) => setLocation(e.target.value)}>
++                <option value="">All locations</option>
++                {(md?.locations ?? []).map((l) => <option key={l} value={l}>{l}</option>)}
++              </select>
++            </label>
++          </div>
++        </div>
++        <div className="presets" role="group" aria-label="Presets">
++          {PRESETS.map((p) => (
++            <button key={p.label} type="button" className="btn secondary" onClick={() => { setAsset(p.asset); setLiability(p.liability); }}>{p.label}</button>
++          ))}
++        </div>
++      </section>
++
++      {error && <div className="banner" role="alert">{error.message}</div>}
++      {!data && !error && <p className="loading" aria-busy="true">Running the scenario…</p>}
++
++      {data && md && k && (
++        <div aria-busy={busy} className={`whatif-results${busy ? " stale" : ""}`}>
++          <p className="scenario-line" role="status"><b>{md.scenario}</b> · {md.base === "ai" ? "AI-adjusted" : "contractual"} base · {ccy}{md.location ? ` · ${md.location}` : ""}</p>
++          <section className="kpi-row" aria-label="Key figures">
++            <div className="kpi"><span>Contracts changing bucket</span><b>{formatInt(k.moved)} / {formatInt(k.total)}</b><small>{formatInt(k.shifted)} dates moved</small></div>
++            <div className="kpi"><span>Pulled to today</span><b>{formatInt(k.pulled_to_today)}</b><small>shifted before the calc date → 0-1M</small></div>
++            <div className="kpi"><span>Worst bucket · base</span><b className={k.worst_base.net < 0 ? "neg" : "pos"}>{formatSignedCompact(k.worst_base.net)}</b><small>{k.worst_base.bucket}</small></div>
++            <div className="kpi"><span>Worst bucket · scenario</span><b className={k.worst_scenario.net < 0 ? "neg" : "pos"}>{formatSignedCompact(k.worst_scenario.net)}</b><small>{k.worst_scenario.bucket} · total {formatSignedCompact(k.total_net)} unchanged</small></div>
++          </section>
++
++          <div className="whatif-grid">
++            <section className="card" aria-label="Net gap chart">
++              <h2>Net gap per bucket</h2>
++              <WhatIfChart rows={data.buckets} currency={ccy} />
++            </section>
++            <section className="card" aria-label="Bucket table">
++              <h2>Impact by bucket</h2>
++              <div className="table-wrap">
++                <table className="compact">
++                  <thead><tr><th>Bucket</th><th className="num">Base</th><th className="num">Scenario</th><th className="num">Change</th><th className="num" title="Cumulative net gap">Cum.</th></tr></thead>
++                  <tbody>{data.buckets.map((b) => (
++                    <tr key={b.bucket}>
++                      <td>{b.bucket}</td>
++                      <td className="num mono">{formatSignedCompact(b.base_net)}</td>
++                      <td className="num mono">{formatSignedCompact(b.scen_net)}</td>
++                      <td className="num mono" data-tone={b.delta < 0 ? "shortfall" : b.delta > 0 ? "surplus" : undefined}>{b.delta ? formatSignedCompact(b.delta) : "—"}</td>
++                      <td className="num mono" data-tone={b.scen_cum < 0 ? "shortfall" : undefined}>{formatSignedCompact(b.scen_cum)}</td>
++                    </tr>
++                  ))}</tbody>
++                </table>
++              </div>
++            </section>
++          </div>
++
++          <section className="card" aria-label="Recommended actions for this scenario">
++            <h2>Recommended actions · scenario</h2>
++            <Actions items={data.recommendations} empty="No action needed in this scenario." />
++          </section>
++
++          <section className="card" aria-label="Contracts that change bucket">
++            <h2>Contracts that change bucket</h2>
++            <p className="hint">{data.movers_total > data.movers.length ? `Largest ${data.movers.length} of ${formatInt(data.movers_total)}` : `${formatInt(data.movers_total)} contracts`}, by cash at maturity</p>
++            {data.movers.length ? (
++              <div className="table-wrap">
++                <table>
++                  <thead><tr><th>Transaction</th><th>Type</th><th>Location</th><th className="num">Cash at maturity</th><th>Base date</th><th>Scenario date</th><th>Bucket</th></tr></thead>
++                  <tbody>{data.movers.map((t) => (
++                    <tr key={t.transaction_id}>
++                      <td className="mono">{t.transaction_id}</td>
++                      <td>{t.book === "asset" ? "Asset" : "Liability"}</td>
++                      <td>{t.location}</td>
++                      <td className="num mono">{formatMoney(t.cash_at_maturity)}</td>
++                      <td className="mono">{t.base_date}</td>
++                      <td className="mono">{t.scenario_date}{t.pulled_to_today ? " (due now)" : ""}</td>
++                      <td>{t.base_bucket} → <b>{t.scenario_bucket}</b></td>
++                    </tr>
++                  ))}</tbody>
++                </table>
++              </div>
++            ) : <p className="empty">No contract changes bucket in this scenario.</p>}
++            <ul className="meta notes">{data.notes.map((n) => <li key={n}>{n}</li>)}</ul>
++          </section>
++        </div>
++      )}
++    </main>
++  );
++}
+diff --git a/frontend/src/styles/app.css b/frontend/src/styles/app.css
+index b66318c..0ba412a 100644
+--- a/frontend/src/styles/app.css
++++ b/frontend/src/styles/app.css
+@@ -341,3 +341,30 @@ tr.clickable:hover td { background: #f7f6fd; }
+   .why-list li { grid-template-columns: 52px 1fr; }
+   .why-list .shift { grid-column: 2; }
+ }
++
++/* ------------------------------------------------------------------ what-if */
++.whatif-controls { display: grid; gap: var(--space-3); }
++.shift-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-4); align-items: start; }
++.shift-control { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3) var(--space-3); margin: 0; min-width: 0; display: grid; gap: 6px; }
++.shift-control legend { font-weight: 600; padding: 0 4px; }
++.shift-inputs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
++.shift-inputs input[type="number"] { width: 76px; }
++.segmented.small button { padding: 7px 12px; }
++.presets { display: flex; gap: 8px; flex-wrap: wrap; }
++.scenario-line { margin: 0; }
++.whatif-results { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
++.whatif-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
++.stale { opacity: .6; transition: opacity .15s; }
++.whatif-chart { margin: 0; }
++.whatif-chart svg { width: 100%; height: auto; display: block; }
++.whatif-chart .axis { stroke: var(--border); }
++.whatif-chart rect.base, .whatif-chart .key.base { fill: var(--series-det); background: var(--series-det); }
++.whatif-chart rect.scen, .whatif-chart .key.scen { fill: var(--primary); background: var(--primary); }
++.whatif-chart .tick { font-size: 12px; fill: var(--muted); }
++.whatif-chart .tick[data-tone="shortfall"] { fill: var(--error); font-weight: 600; }
++.whatif-chart .tick[data-tone="surplus"] { fill: var(--success); font-weight: 600; }
++.whatif-chart .legend { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: 13px; margin-top: 6px; align-items: center; }
++.whatif-chart .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
++@media (max-width: 900px) {
++  .shift-grid, .whatif-grid { grid-template-columns: 1fr; }
++}

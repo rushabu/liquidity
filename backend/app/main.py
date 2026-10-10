@@ -12,7 +12,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import get_settings
 from .logging_setup import request_id_var, setup_logging
-from .routers import behavioral, health, ingest, ladder
+from .routers import behavioral, health, ingest, ladder, whatif
 from .services.errors import ApiError
 
 settings = get_settings()
@@ -91,6 +91,7 @@ app.include_router(health.router)
 app.include_router(ingest.router)
 app.include_router(ladder.router)
 app.include_router(behavioral.router)
+app.include_router(whatif.router)
 
 
 @app.on_event("startup")

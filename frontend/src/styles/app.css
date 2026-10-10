@@ -341,3 +341,30 @@ tr.clickable:hover td { background: #f7f6fd; }
   .why-list li { grid-template-columns: 52px 1fr; }
   .why-list .shift { grid-column: 2; }
 }
+
+/* ------------------------------------------------------------------ what-if */
+.whatif-controls { display: grid; gap: var(--space-3); }
+.shift-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-4); align-items: start; }
+.shift-control { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3) var(--space-3); margin: 0; min-width: 0; display: grid; gap: 6px; }
+.shift-control legend { font-weight: 600; padding: 0 4px; }
+.shift-inputs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.shift-inputs input[type="number"] { width: 76px; }
+.segmented.small button { padding: 7px 12px; }
+.presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.scenario-line { margin: 0; }
+.whatif-results { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.whatif-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.stale { opacity: .6; transition: opacity .15s; }
+.whatif-chart { margin: 0; }
+.whatif-chart svg { width: 100%; height: auto; display: block; }
+.whatif-chart .axis { stroke: var(--border); }
+.whatif-chart rect.base, .whatif-chart .key.base { fill: var(--series-det); background: var(--series-det); }
+.whatif-chart rect.scen, .whatif-chart .key.scen { fill: var(--primary); background: var(--primary); }
+.whatif-chart .tick { font-size: 12px; fill: var(--muted); }
+.whatif-chart .tick[data-tone="shortfall"] { fill: var(--error); font-weight: 600; }
+.whatif-chart .tick[data-tone="surplus"] { fill: var(--success); font-weight: 600; }
+.whatif-chart .legend { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: 13px; margin-top: 6px; align-items: center; }
+.whatif-chart .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+@media (max-width: 900px) {
+  .shift-grid, .whatif-grid { grid-template-columns: 1fr; }
+}

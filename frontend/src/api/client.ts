@@ -613,3 +613,79 @@ export const downloadAiPredictions = (p: AiTxnQuery) =>
   downloadCsv("/api/behavioral/transactions.csv", qb({ ...p, page: undefined, page_size: undefined, sort: undefined, order: undefined }), "liquidplus_ai_predictions.csv");
 export const downloadHistoryPredictions = () =>
   downloadCsv("/api/behavioral/history-predictions.csv", {}, "liquidplus_history_predictions.csv");
+
+/* ------------------------------------------------------------------ what-if tenor shifts */
+export type WhatIfBase = "deterministic" | "ai";
+
+export interface WhatIfQuery {
+  base?: WhatIfBase;
+  asset_shift_months?: number;
+  asset_shift_days?: number;
+  liability_shift_months?: number;
+  liability_shift_days?: number;
+  currency?: string;
+  location?: string;
+  calc_date?: string;
+}
+
+export interface WhatIfBucket {
+  bucket: BucketKey;
+  label: string;
+  start_date: string;
+  end_date: string | null;
+  base_assets: number;
+  base_liabilities: number;
+  base_net: number;
+  scen_assets: number;
+  scen_liabilities: number;
+  scen_net: number;
+  delta: number;
+  base_cum: number;
+  scen_cum: number;
+  moved_in: number;
+  moved_out: number;
+}
+
+export interface WhatIfMover {
+  transaction_id: string;
+  book: "asset" | "liability";
+  location: string;
+  customer_segment: string | null;
+  cash_at_maturity: number;
+  base_date: string;
+  scenario_date: string;
+  base_bucket: BucketKey;
+  scenario_bucket: BucketKey;
+  pulled_to_today: boolean;
+}
+
+export interface WhatIfResponse {
+  metadata: {
+    base: WhatIfBase;
+    as_of_date: string;
+    calculation_date: string;
+    currency: string;
+    location: string | null;
+    currencies: string[];
+    locations: string[];
+    scope_location: string | null;
+    shifts: Record<"asset" | "liability", { months: number; days: number; text: string }>;
+    scenario: string;
+  };
+  kpis: {
+    total: number;
+    moved: number;
+    shifted: number;
+    pulled_to_today: number;
+    worst_base: { bucket: BucketKey; net: number };
+    worst_scenario: { bucket: BucketKey; net: number };
+    total_net: number;
+  };
+  buckets: WhatIfBucket[];
+  movers_total: number;
+  movers: WhatIfMover[];
+  recommendations: Recommendation[];
+  notes: string[];
+}
+
+export const getWhatIf = (p: WhatIfQuery = {}) => cachedJson<WhatIfResponse>("/api/whatif", q(p));

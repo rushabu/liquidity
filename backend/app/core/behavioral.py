@@ -501,7 +501,8 @@ def _when(b: dict) -> str:
     return f" by {date.fromisoformat(d):%d %b %Y}" if d else ""
 
 
-def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> list[dict]:
+def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, view: str = "AI-adjusted",
+              base: str = "contractual view", cause: str = "Predicted early withdrawals") -> list[dict]:
     """One-line treasury actions from the AI-adjusted (behavioural) gap, read cumulatively like a treasury desk:
 
     1. a surplus in an earlier bucket is rolled forward to cover a later shortfall (no new money needed);
@@ -545,7 +546,7 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> l
             if need > 0:                        # 2. raise the rest
                 add(b, "fund", "high" if key in SHORT_TERM else "medium",
                     f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
-                    f"AI-adjusted {key} gap is −{money(-ai)} (contractual view {'+' if b['det_net'] >= 0 else '−'}"
+                    f"{view} {key} gap is −{money(-ai)} ({base} {'+' if b['det_net'] >= 0 else '−'}"
                     f"{money(abs(b['det_net']))})" + (f"; earlier surplus covers {money(-ai - need)}." if -ai - need > 0
                                                       else "."), need)
         if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
@@ -556,7 +557,7 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict]) -> l
         dl = b["ai_liabilities"] - b["det_liabilities"]
         if ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):   # 4b. retention
             add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
-                f"Predicted early withdrawals add {money(dl)} of outflows to {key}; see Drill-down for the clients.", dl)
+                f"{cause} add {money(dl)} of outflows to {key}; see the contracts list for the clients.", dl)
 
     for src, left in pool:                      # 3. surplus nobody needs later
         if left <= 0:

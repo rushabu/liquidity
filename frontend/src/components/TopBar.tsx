@@ -14,6 +14,7 @@ export function TopBar() {
         <NavLink to="/upload">Data ingestion</NavLink>
         <NavLink to="/ladder">Gap ladder · deterministic</NavLink>
         <NavLink to="/ai" className="ai-nav">AI gap ladder <span className="ai-badge">AI</span></NavLink>
+        <NavLink to="/whatif">What-if</NavLink>
       </nav>
     </header>
   );
