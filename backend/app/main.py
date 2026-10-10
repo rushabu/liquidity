@@ -29,6 +29,12 @@ async def request_context(request: Request, call_next):
     token = request_id_var.set(rid)
     t0 = time.perf_counter()
     try:
+        # refuse oversized uploads from the Content-Length header, before the body is buffered
+        cl = request.headers.get("content-length", "")
+        if (request.method == "POST" and request.url.path.startswith("/api/ingest/") and cl.isdigit()
+                and int(cl) > (settings.max_upload_mb + 1) * 1024 * 1024):
+            return _err(413, "FILE_TOO_LARGE", f"File is larger than {settings.max_upload_mb} MB",
+                        {"max_mb": settings.max_upload_mb})
         response = await call_next(request)
         response.headers["x-request-id"] = rid
         log.info("request", extra={"method": request.method, "path": request.url.path,
