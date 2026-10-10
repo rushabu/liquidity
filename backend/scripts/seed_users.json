@@ -1,0 +1,8 @@
+[
+  {"email": "support@liquidplus.dev",   "role": "support",  "location": null},
+  {"email": "hongkong@liquidplus.dev",  "role": "standard", "location": "Hong Kong"},
+  {"email": "newyork@liquidplus.dev",   "role": "standard", "location": "New York"},
+  {"email": "london@liquidplus.dev",    "role": "standard", "location": "London"},
+  {"email": "singapore@liquidplus.dev", "role": "standard", "location": "Singapore"},
+  {"email": "paris@liquidplus.dev",     "role": "standard", "location": "Paris"}
+]

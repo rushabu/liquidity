@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     supabase_url: str = ""
     jwt_audience: str = "authenticated"
+    # Only used by scripts/setup_supabase.py (never by the API, never in the browser).
+    supabase_service_role_key: str = ""
+    seed_user_password: str = ""
     # Local development only. Returns a Support user without a token.
     dev_auth_bypass: bool = False
 
