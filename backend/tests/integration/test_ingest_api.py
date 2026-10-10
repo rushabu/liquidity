@@ -280,17 +280,43 @@ def test_errors_default_scope_ignores_replaced_batches(client):
     assert client.get("/api/ingest/errors", headers=auth("standard", "Paris")).json()["total"] == 1
 
 
+UI_HEADER = ["File", "Row", "Transaction", "Field", "Value found", "Rule broken", "Message", "Severity"]
+
+
+def _csv(client, headers=None, **params):
+    r = client.get("/api/ingest/errors.csv", params=params, headers=headers or auth())
+    assert r.status_code == 200, r.text
+    return r, list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+
+
 def test_errors_csv_download(client):
     ids = [upload(client, b).json()["batch_id"] for b in ("asset", "historical")]
-    r = client.get(f"/api/ingest/errors.csv?batch_ids={','.join(ids)}", headers=auth("standard", "Paris"))
-    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    r, rows = _csv(client, auth("standard", "Paris"), batch_ids=",".join(ids))
+    assert r.headers["content-type"].startswith("text/csv")
     assert "attachment" in r.headers["content-disposition"]
-    rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
-    assert rows[0] == ["file", "source_row", "transaction_id", "field", "value", "rule_code", "message", "severity"]
+    assert rows[0] == UI_HEADER
     assert len(rows) == 1 + 2 + 8
-    assert rows[1][0] == FILES["asset"] and rows[1][1] == "755" and rows[1][2] == "AST-007026"
+    assert {len(x) for x in rows} == {8}
     assert client.get("/api/ingest/errors.csv?batch_ids=", headers=auth()).status_code == 422
-    assert client.get("/api/ingest/errors.csv", headers=auth()).status_code == 422
+
+
+def test_errors_csv_is_the_on_screen_report(client):
+    """Same scope, filters, order and cell text as GET /errors (what the table renders), just unpaged."""
+    for b in ("asset", "historical"):
+        upload(client, b)
+    for params in ({}, {"book": "historical"}, {"severity": "error"}, {"severity": "warning"},
+                   {"book": "asset", "rule_code": "ID_DUPLICATE"}):
+        ui = client.get("/api/ingest/errors", params={**params, "page_size": 200}, headers=auth()).json()
+        _, rows = _csv(client, **params)
+        assert rows[0] == UI_HEADER and len(rows) - 1 == ui["total"], params
+        show = lambda v: "\u2014" if v in (None, "") else str(v)
+        expected = [[show(i["file"]), show(i["source_row"]), show(i["transaction_id"]), show(i["field"]),
+                     show(i["value"]), i["rule_code"], show(i["message"]),
+                     "Error (row rejected)" if i["severity"] == "error" else "Warning"] for i in ui["items"]]
+        assert rows[1:] == expected, params
+    _, rows = _csv(client)
+    assert rows[1][0] == FILES["historical"]                 # newest upload first, like the table
+    assert any(r[7] == "Warning" for r in rows[1:]) and any(r[7] == "Error (row rejected)" for r in rows[1:])
 
 
 def test_csv_report_neutralises_formula_injection(client, db):

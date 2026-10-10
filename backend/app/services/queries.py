@@ -86,26 +86,33 @@ def _scope(batch_ids: list[str], book: str | None, severity: str | None, rule_co
     return " and ".join(where), p
 
 
+_ERROR_FROM = "from ingestion_errors e join ingestion_batches b on b.id = e.batch_id"
+_ERROR_ORDER = "order by b.created_at desc, e.source_row nulls first, e.id"     # the on-screen order
+
+
 def list_errors(engine: Engine, *, batch_ids: list[str], book: str | None, severity: str | None,
                 rule_code: str | None, page: int, page_size: int) -> dict:
     where, p = _scope(batch_ids, book, severity, rule_code)
     with engine.connect() as conn:
-        total = conn.execute(text(f"select count(*) from ingestion_errors e join ingestion_batches b "
-                                  f"on b.id = e.batch_id where {where}"), p).scalar_one()
+        total = conn.execute(text(f"select count(*) {_ERROR_FROM} where {where}"), p).scalar_one()
         items = conn.execute(text(f"""
             select e.id, e.batch_id, b.book, b.source_filename as file, e.source_row, e.transaction_id,
                    e.field, e.value, e.rule_code, e.message, e.severity
-              from ingestion_errors e join ingestion_batches b on b.id = e.batch_id
-             where {where} order by b.created_at desc, e.source_row nulls first, e.id
+              {_ERROR_FROM}
+             where {where} {_ERROR_ORDER}
              limit :lim offset :off"""), {**p, "lim": page_size, "off": (page - 1) * page_size}).mappings().all()
         w2, p2 = _scope(batch_ids, book, severity, rule_code, include_rule=False)
-        codes = conn.execute(text(f"select distinct e.rule_code from ingestion_errors e join ingestion_batches b "
-                                  f"on b.id = e.batch_id where {w2} order by 1"), p2).scalars().all()
+        codes = conn.execute(text(f"select distinct e.rule_code {_ERROR_FROM} where {w2} order by 1"),
+                             p2).scalars().all()
     return {"total": total, "page": page, "page_size": page_size,
             "items": [{**dict(i), "batch_id": str(i["batch_id"])} for i in items], "rule_codes": list(codes)}
 
 
-CSV_HEADER = ["file", "source_row", "transaction_id", "field", "value", "rule_code", "message", "severity"]
+# Same columns, order and wording as the Error report table on the Data ingestion page. The table shows the
+# rule code with its message underneath and the severity as the chip colour; the CSV gives those their own columns.
+CSV_HEADER = ["File", "Row", "Transaction", "Field", "Value found", "Rule broken", "Message", "Severity"]
+EMPTY = "\u2014"                       # the "—" the table shows for a missing value
+SEVERITY_LABEL = {"error": "Error (row rejected)", "warning": "Warning"}
 
 
 def _csv_safe(v) -> str:
@@ -116,19 +123,26 @@ def _csv_safe(v) -> str:
     return s
 
 
-def errors_csv(engine: Engine, batch_ids: list[str]) -> Iterator[str]:
+def errors_csv(engine: Engine, *, batch_ids: list[str], book: str | None = None, severity: str | None = None,
+               rule_code: str | None = None) -> Iterator[str]:
+    """The Error report exactly as the table shows it: same scope (the given batches, else everything active),
+    same filters, same order and the same cell text, with every row instead of one page."""
     def line(cells) -> str:
         buf = io.StringIO()
         csv.writer(buf, lineterminator="\r\n").writerow(cells)
         return buf.getvalue()
 
-    yield "﻿" + line(CSV_HEADER)        # BOM so Excel opens it as UTF-8
+    def cell(v) -> str:
+        return EMPTY if v is None or v == "" else _csv_safe(v)
+
+    where, p = _scope(batch_ids, book, severity, rule_code)
+    yield "\ufeff" + line(CSV_HEADER)        # BOM so Excel opens it as UTF-8
     with engine.connect() as conn:
-        res = conn.execution_options(stream_results=True, yield_per=2000).execute(text("""
+        res = conn.execution_options(stream_results=True, yield_per=2000).execute(text(f"""
             select b.source_filename, e.source_row, e.transaction_id, e.field, e.value, e.rule_code,
                    e.message, e.severity
-              from ingestion_errors e join ingestion_batches b on b.id = e.batch_id
-             where e.batch_id = any(cast(:ids as uuid[]))
-             order by b.created_at, e.source_row nulls first, e.id"""), {"ids": batch_ids})
-        for r in res:
-            yield line([_csv_safe(c) for c in r])
+              {_ERROR_FROM}
+             where {where} {_ERROR_ORDER}"""), p)
+        for f, row, tid, field, value, rule, msg, sev in res:
+            yield line([cell(f), cell(row), cell(tid), cell(field), cell(value), cell(rule), cell(msg),
+                        SEVERITY_LABEL.get(sev, cell(sev))])

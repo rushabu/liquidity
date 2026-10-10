@@ -44,9 +44,6 @@ export function UploadPage() {
   };
 
   const validAsOf = isValidIsoDate(asOf) ? asOf : null;
-  const csvBatchIds = summary
-    ? Object.values(summary.books).filter((b): b is Batch => !!b && (b.rows_rejected > 0 || b.warnings_count > 0)).map((b) => b.id)
-    : [];
 
   return (
     <main className="page">
@@ -67,7 +64,7 @@ export function UploadPage() {
       </div>
 
       <SnapshotStrip summary={summary} />
-      <ErrorReportTable refreshKey={refreshKey} csvBatchIds={csvBatchIds} />
+      <ErrorReportTable refreshKey={refreshKey} />
       <BatchHistory items={batches} loading={loading} error={histError} />
     </main>
   );

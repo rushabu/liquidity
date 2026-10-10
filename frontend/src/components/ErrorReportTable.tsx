@@ -8,11 +8,9 @@ const PAGE_SIZE = 50;
 interface Props {
   /** bump to reload after an upload */
   refreshKey: number;
-  /** active batches that have rejected rows or warnings (feeds the CSV download) */
-  csvBatchIds: string[];
 }
 
-export function ErrorReportTable({ refreshKey, csvBatchIds }: Props) {
+export function ErrorReportTable({ refreshKey }: Props) {
   const [book, setBook] = useState<Book | "">("");
   const [severity, setSeverity] = useState<Severity | "">("");
   const [rule, setRule] = useState("");
@@ -46,14 +44,15 @@ export function ErrorReportTable({ refreshKey, csvBatchIds }: Props) {
 
   async function download() {
     setDlError(null);
-    try { await downloadErrorsCsv(csvBatchIds); } catch (e) { setDlError((e as Error).message); }
+    // the CSV is this table: same filters, same columns and order, all pages
+    try { await downloadErrorsCsv({ book: book || undefined, severity: severity || undefined, rule_code: rule || undefined }); } catch (e) { setDlError((e as Error).message); }
   }
 
   return (
     <section className="card" aria-labelledby="err-h">
       <div className="table-head">
         <h2 id="err-h">Error report</h2>
-        <button type="button" className="btn secondary" onClick={download} disabled={csvBatchIds.length === 0}>
+        <button type="button" className="btn secondary" onClick={download} disabled={total === 0}>
           Download error report (CSV)
         </button>
       </div>

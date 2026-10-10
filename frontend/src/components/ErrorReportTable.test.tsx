@@ -16,7 +16,7 @@ beforeEach(() => { getErrors.mockReset(); download.mockReset(); });
 
 it("renders the six columns and the rows", async () => {
   getErrors.mockResolvedValue(errPage(3));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={["b1"]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   const table = await screen.findByRole("table");
   expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(
     ["File", "Row", "Transaction", "Field", "Value found", "Rule broken"]);
@@ -27,20 +27,20 @@ it("renders the six columns and the rows", async () => {
 
 it("shows the empty state", async () => {
   getErrors.mockResolvedValue(errPage(0));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={[]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   expect(await screen.findByText("No rejected rows")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Download error report/ })).toBeDisabled();
 });
 
 it("shows a loading state first", () => {
   getErrors.mockReturnValue(new Promise(() => {}));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={[]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   expect(screen.getByText(/Loading error report/)).toBeInTheDocument();
 });
 
 it("shows an error state and retries", async () => {
   getErrors.mockRejectedValueOnce(new ApiError("NETWORK", "Cannot reach the server.")).mockResolvedValue(errPage(1));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={[]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("Cannot reach the server.");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByRole("table")).toBeInTheDocument();
@@ -48,7 +48,7 @@ it("shows an error state and retries", async () => {
 
 it("paginates on the server, 50 per page", async () => {
   getErrors.mockImplementation(async (q) => errPage(120, { page: q.page, items: errPage(q.page === 3 ? 20 : 50).items }));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={["b1"]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   expect(await screen.findByText("Showing 1–50 of 120")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -61,7 +61,7 @@ it("paginates on the server, 50 per page", async () => {
 
 it("sends the book, severity and rule filters and returns to page 1", async () => {
   getErrors.mockResolvedValue(errPage(120));
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={["b1"]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   await screen.findByRole("table");
   await userEvent.click(screen.getByRole("button", { name: "Next" }));
   await userEvent.selectOptions(screen.getByLabelText("Book"), "historical");
@@ -71,21 +71,26 @@ it("sends the book, severity and rule filters and returns to page 1", async () =
     expect.objectContaining({ book: "historical", severity: "warning", rule_code: "CURRENCY_INVALID", page: 1 })));
 });
 
-it("downloads the combined CSV for the given batches and surfaces failures", async () => {
+it("downloads the CSV with the same filters as the table and surfaces failures", async () => {
   getErrors.mockResolvedValue(errPage(1));
   download.mockRejectedValueOnce(new Error("Download failed")).mockResolvedValue(undefined);
-  render(<ErrorReportTable refreshKey={0} csvBatchIds={["b1", "b2"]} />);
+  render(<ErrorReportTable refreshKey={0} />);
   await screen.findByRole("table");
   await userEvent.click(screen.getByRole("button", { name: "Download error report (CSV)" }));
-  expect(download).toHaveBeenCalledWith(["b1", "b2"]);
+  expect(download).toHaveBeenLastCalledWith({ book: undefined, severity: undefined, rule_code: undefined });
   expect(await screen.findByText("Download failed")).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText("Book"), "historical");
+  await userEvent.selectOptions(screen.getByLabelText("Severity"), "error");
+  await screen.findByRole("table");
+  await userEvent.click(screen.getByRole("button", { name: "Download error report (CSV)" }));
+  expect(download).toHaveBeenLastCalledWith({ book: "historical", severity: "error", rule_code: undefined });
 });
 
 it("reloads when refreshKey changes", async () => {
   getErrors.mockResolvedValue(errPage(1));
-  const { rerender } = render(<ErrorReportTable refreshKey={0} csvBatchIds={[]} />);
+  const { rerender } = render(<ErrorReportTable refreshKey={0} />);
   await screen.findByRole("table");
   const calls = getErrors.mock.calls.length;
-  rerender(<ErrorReportTable refreshKey={1} csvBatchIds={[]} />);
+  rerender(<ErrorReportTable refreshKey={1} />);
   await waitFor(() => expect(getErrors.mock.calls.length).toBeGreaterThan(calls));
 });

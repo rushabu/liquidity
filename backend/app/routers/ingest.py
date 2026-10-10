@@ -73,11 +73,18 @@ def get_errors(
 
 
 @router.get("/errors.csv")
-def get_errors_csv(batch_ids: str = Query(..., description="comma separated batch ids"),
-                   user: CurrentUser = Depends(get_current_user)):
+def get_errors_csv(
+    batch_ids: str | None = Query(None, description="comma separated batch ids; omit for everything active"),
+    book: Book | None = None,
+    severity: Severity | None = None,
+    rule_code: str | None = None,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Same rows, filters, order and columns as GET /errors (the on-screen table), without paging."""
     ids = queries.parse_ids(batch_ids)
-    if not ids:
-        raise ApiError(422, "BAD_REQUEST", "batch_ids must contain at least one batch id")
+    if batch_ids is not None and not ids:
+        raise ApiError(422, "BAD_REQUEST", "batch_ids must contain at least one batch id (or be left out)")
     return StreamingResponse(
-        queries.errors_csv(get_engine(), ids), media_type="text/csv; charset=utf-8",
+        queries.errors_csv(get_engine(), batch_ids=ids, book=book, severity=severity, rule_code=rule_code),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="liquidplus_error_report.csv"'})

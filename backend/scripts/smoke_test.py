@@ -64,7 +64,7 @@ def run(api: str, token: str | None, standard_token: str | None, date: str = "20
         e = c.get("/api/ingest/errors", headers=h, params={"book": "historical"}).json()
         check("error report: 7 rejects + 1 warning for the historical log", e.get("total") == 8, f"total={e.get('total')}")
         r = c.get("/api/ingest/errors.csv", headers=h, params={"batch_ids": ",".join(ids.values())})
-        check("error CSV downloads", r.status_code == 200 and r.text.lstrip("﻿").startswith("file,source_row"))
+        check("error CSV downloads", r.status_code == 200 and r.text.lstrip("﻿").startswith("File,Row,Transaction"))
 
         bad = c.post("/api/ingest/liability", headers=h, data={"as_of_date": date},
                      files={"file": ("x - 10102026.xlsx", (DATA / "asset_book.xlsx").read_bytes())})

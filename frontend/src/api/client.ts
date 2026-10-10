@@ -168,10 +168,20 @@ export function uploadBook(
   return { promise, abort: () => xhr.abort() };
 }
 
-/** The CSV endpoint needs the auth header, so it is fetched and saved as a blob. */
-export async function downloadErrorsCsv(batchIds: string[]): Promise<void> {
-  const res = await fetch(`${API_URL}/api/ingest/errors.csv?batch_ids=${encodeURIComponent(batchIds.join(","))}`, {
-    headers: authHeaders(),
+export interface ErrorCsvQuery {
+  book?: Book;
+  severity?: Severity;
+  rule_code?: string;
+}
+
+/** The CSV endpoint needs the auth header, so it is fetched and saved as a blob. It is the Error report table
+ * with the same filters applied, every page included (no batch ids = everything active, like the table). */
+export async function downloadErrorsCsv(q: ErrorCsvQuery = {}): Promise<void> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (v) params.set(k, String(v));
+  const qs = params.toString();
+  const res = await fetch(`${API_URL}/api/ingest/errors.csv${qs ? `?${qs}` : ""}`, {
+  headers: authHeaders(),
   }).catch(() => {
     throw new ApiError("NETWORK", "Cannot reach the server.");
   });

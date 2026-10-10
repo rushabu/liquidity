@@ -132,7 +132,7 @@ Errors are always `{"error": {"code", "message", "details"}}`. Every response ca
 | `GET /api/ingest/summary?as_of_date=` | any user | latest **active** batch per book; `ready` = all three books for the same date |
 | `GET /api/ingest/batches?limit=20` | any user | upload history |
 | `GET /api/ingest/errors?batch_id=&book=&severity=&rule_code=&page=&page_size=` | any user | paginated issues (default scope: active batches) |
-| `GET /api/ingest/errors.csv?batch_ids=a,b,c` | any user | full combined report |
+| `GET /api/ingest/errors.csv` (`book`, `severity`, `rule_code`, optional `batch_ids`) | any user | the Error report table as CSV: same columns (File, Row, Transaction, Field, Value found, Rule broken, Message, Severity), filters and order, all pages |
 | `GET /health`, `GET /health/db` | public | liveness, and `SELECT 1` (503 if the DB is down) |
 
 File-level failures return **422** and store nothing: `FILE_TYPE_UNSUPPORTED`, `FILE_EMPTY`, `FILE_UNREADABLE`, `FILE_MISSING_COLUMNS`, `FILE_WRONG_BOOK`, `AS_OF_DATE_INVALID`; `FILE_TOO_LARGE` is **413**; `401` no/invalid token; `403` role not allowed.
