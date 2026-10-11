@@ -44,24 +44,46 @@ def list_batches(engine: Engine, limit: int) -> list[dict]:
     return [_row(r) for r in rows]
 
 
+def pick_historical(candidates: list[dict], snapshot: date | None) -> dict | None:
+    """THE rule for which historical log trains the model for a snapshot (shared with the AI pages):
+    same date, else the newest one on or before the snapshot, else the newest one."""
+    if not candidates:
+        return None
+    if snapshot is None:
+        return max(candidates, key=lambda r: (r["as_of_date"], r["created_at"]))
+    return max(candidates, key=lambda r: (r["as_of_date"] == snapshot, r["as_of_date"] <= snapshot,
+                                          r["as_of_date"], r["created_at"]))
+
+
 def summary(engine: Engine, as_of: date | None) -> dict:
-    """Latest ACTIVE batch per book (optionally for one snapshot date)."""
+    """Active books for THE snapshot date, chosen exactly like the ladder and the AI pages: the given date, else
+    the newest date that has an active asset AND liability book (else the newest date with any upload, so a
+    partial load still shows progress). Newer uploads that are not part of it are listed under `pending`."""
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
-            select distinct on (book) {BATCH_COLS} from ingestion_batches
-             where is_active and status = 'completed' and (cast(:d as date) is null or as_of_date = :d)
-             order by book, as_of_date desc, created_at desc"""), {"d": as_of}).mappings().all()
-    books: dict[str, dict | None] = {b: None for b in BOOKS}
+            select distinct on (book, as_of_date) {BATCH_COLS} from ingestion_batches
+             where is_active and status = 'completed'
+             order by book, as_of_date desc, created_at desc""")).mappings().all()
+    by_date: dict[date, dict[str, dict]] = {}
     for r in rows:
-        books[r["book"]] = _row(r)
+        by_date.setdefault(r["as_of_date"], {})[r["book"]] = _row(r)
+    both = [d for d, b in by_date.items() if "asset" in b and "liability" in b]
+    snapshot = as_of or (max(both) if both else max(by_date) if by_date else None)
+    found = by_date.get(snapshot, {})
+    books: dict[str, dict | None] = {b: found.get(b) for b in BOOKS}
     present = [b for b in books.values() if b]
-    dates = {b["as_of_date"] for b in present}
+    model = pick_historical([b["historical"] for b in by_date.values() if "historical" in b], snapshot)
+    pending = sorted(({"book": k, "as_of_date": d.isoformat()} for d, bs in by_date.items()
+                      if snapshot and d > snapshot for k in bs), key=lambda p: (p["as_of_date"], p["book"]))
     return {
-        "as_of_date": max(dates).isoformat() if dates else None,
+        "as_of_date": snapshot.isoformat() if snapshot else None,
         "books": books,
         "rows_stored_total": sum(b["rows_valid"] for b in present),
         # the ladder needs all three books for the SAME snapshot date
-        "ready": len(present) == len(BOOKS) and len(dates) == 1,
+        "ready": len(present) == len(BOOKS),
+        "model_history": {"id": model["id"], "as_of_date": model["as_of_date"].isoformat(),
+                          "same_date": model["as_of_date"] == snapshot} if model else None,
+        "pending": pending,
     }
 
 

@@ -21,6 +21,7 @@ from ..core import behavioral as bm
 from ..deps import CurrentUser
 from .errors import ApiError
 from .ladder_queries import active_batches, allowed_location
+from .queries import pick_historical
 
 LIVE_COLS = {
     "asset": ("assets", "loan_amount", "loan_type"),
@@ -102,16 +103,15 @@ def historical_batch(engine: Engine, as_of: date | None) -> dict:
 
 
 def _historical_batch(engine: Engine, as_of: date | None) -> dict:
+    """Same rule as the ingestion summary (queries.pick_historical): same date, else newest on or before it."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            select id, as_of_date, source_filename, rows_valid from ingestion_batches
-             where is_active and status = 'completed' and book = 'historical'
-             order by (as_of_date = cast(:d as date)) desc nulls last, as_of_date desc, created_at desc
-             limit 1"""), {"d": as_of}).mappings().all()
-    if not rows:
+            select id, as_of_date, source_filename, rows_valid, created_at from ingestion_batches
+             where is_active and status = 'completed' and book = 'historical'""")).mappings().all()
+    r = pick_historical([dict(x) for x in rows], as_of)
+    if not r:
         raise ApiError(409, "MODEL_NOT_READY",
                        "The behavioural model needs the historical log. Upload it on the Data ingestion page.")
-    r = rows[0]
     return {**r, "id": str(r["id"])}
 
 

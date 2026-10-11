@@ -20,6 +20,15 @@ export function SnapshotStrip({ summary }: { summary: Summary | null }) {
           {ready ? "All three books are loaded for this date."
             : `${loaded} of 3 books loaded. Load all three for the same date to continue.`}
         </p>
+        {summary?.model_history && !summary.model_history.same_date && (
+          <p className="sub warn">The AI model uses the historical log of {summary.model_history.as_of_date} (none for {summary.as_of_date}).</p>
+        )}
+        {!!summary?.pending?.length && (
+          <p className="sub warn">
+            Not in use yet: {summary.pending.map((p) => `${p.book} ${p.as_of_date}`).join(", ")}. The ladder uses the newest date
+            that has both an asset and a liability book.
+          </p>
+        )}
       </div>
       {ready ? (
         <Link className="btn" to="/ladder">View deterministic ladder →</Link>

@@ -78,16 +78,16 @@ def test_scenario_recommendations_cover_every_shortfall(client, books):
         assert covered == pytest.approx(max(0.0, -b["scen_net"]), abs=0.05)
 
 
-def test_ai_base_needs_history_and_matches_the_ai_ladder(client, books):
-    r = client.get("/api/whatif", params={"base": "ai"}, headers=auth())
-    assert r.status_code == 409 and r.json()["error"]["code"] == "MODEL_NOT_READY"
-    assert upload(client, "historical").status_code == 201
-    w = wi(client, base="ai", currency="EUR")
-    ai = client.get("/api/behavioral/compare", params={"currency": "EUR"}, headers=auth()).json()["buckets"]
-    for b, a in zip(w["buckets"], ai, strict=True):
-        assert b["base_net"] == pytest.approx(a["ai_net"], abs=0.05)
-    s = wi(client, base="ai", currency="EUR", liability_shift_days=-30)
-    assert s["metadata"]["base"] == "ai" and s["kpis"]["moved"] > 0
+def test_contractual_only_no_ml_model(client, books):
+    """Task xiii: re-computation with adjusted maturities, no ML model. Works without a historical log, never
+    trains a model, and an old `base=ai` parameter is ignored (still the contractual ladder)."""
+    from app.services import behavioral_queries as bq
+    bq.MODELS.clear()
+    w = wi(client, currency="EUR", liability_shift_months=-1)
+    assert w["metadata"]["base"] == "deterministic" and w["kpis"]["moved"] > 0
+    assert len(bq.MODELS.data) == 0                                                 # nothing was trained
+    assert wi(client, currency="EUR", liability_shift_months=-1, base="ai")["buckets"] == w["buckets"]
+    assert "No ML model" in " ".join(w["notes"])
 
 
 def test_location_scope_and_validation(client, books):
@@ -98,5 +98,16 @@ def test_location_scope_and_validation(client, books):
     paris = wi(client, currency="EUR", location="Paris", asset_shift_months=2)
     assert paris["metadata"]["location"] == "Paris" and {t["location"] for t in paris["movers"]} <= {"Paris"}
     for params in ({"asset_shift_months": 25}, {"liability_shift_days": -400}, {"currency": "XXX"},
-                   {"currency": "EUR", "location": "Atlantis"}, {"base": "magic"}):
+                   {"currency": "EUR", "location": "Atlantis"}):
         assert client.get("/api/whatif", params=params, headers=auth()).status_code == 422, params
+
+
+def test_advice_follows_the_shift_direction(client, books):
+    later = wi(client, currency="EUR", liability_shift_months=4)
+    assert later["recommendations"]
+    assert not any(r["kind"] == "retain" for r in later["recommendations"])
+    assert not any("earlier" in (r["action"] + r["rationale"]).lower() for r in later["recommendations"])
+    sooner = wi(client, currency="EUR", liability_shift_months=-1)
+    assert any(r["kind"] == "retain" and "shifted earlier" in r["rationale"] for r in sooner["recommendations"])
+    mixed = wi(client, currency="EUR", liability_shift_months=1, liability_shift_days=-3)    # net effect: later
+    assert not any(r["kind"] == "retain" for r in mixed["recommendations"])

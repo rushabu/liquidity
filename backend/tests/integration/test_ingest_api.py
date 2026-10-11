@@ -236,7 +236,7 @@ def test_summary_ready_only_when_all_three_books_share_a_snapshot_date(client):
     h = auth("standard", "London")
     assert client.get("/api/ingest/summary", headers=h).json() == {
         "as_of_date": None, "books": {"asset": None, "liability": None, "historical": None},
-        "rows_stored_total": 0, "ready": False}
+        "rows_stored_total": 0, "ready": False, "model_history": None, "pending": []}
     upload(client, "asset"); upload(client, "liability")
     s = client.get("/api/ingest/summary", headers=h).json()
     assert s["ready"] is False and s["books"]["historical"] is None and s["rows_stored_total"] == 753 + 1103

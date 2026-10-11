@@ -10,7 +10,7 @@ const B = ["0-1M", "1-3M", "3-12M", "1-5Y", ">5Y"] as const;
 const resp = (q: client.WhatIfQuery): client.WhatIfResponse => {
   const shifted = (q.liability_shift_months ?? 0) !== 0 || (q.asset_shift_days ?? 0) !== 0;
   return {
-    metadata: { base: q.base ?? "deterministic", as_of_date: "2026-10-10", calculation_date: "2026-10-10", currency: q.currency ?? "EUR",
+    metadata: { base: "deterministic", as_of_date: "2026-10-10", calculation_date: "2026-10-10", currency: q.currency ?? "EUR",
       location: q.location ?? null, currencies: ["EUR", "USD"], locations: ["Paris", "London"], scope_location: null,
       shifts: { asset: { months: 0, days: q.asset_shift_days ?? 0, text: "x" }, liability: { months: q.liability_shift_months ?? 0, days: 0, text: "y" } },
       scenario: shifted ? "Assets unchanged · liabilities 1 month earlier" : "Assets unchanged · liabilities unchanged" },
@@ -44,24 +44,42 @@ it("converts the shift controls to API parameters", () => {
 it("starts with liabilities 1 month earlier and shows impact, actions and movers", async () => {
   page();
   expect(await screen.findByText("Assets unchanged · liabilities 1 month earlier")).toBeInTheDocument();
-  expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ base: "deterministic", liability_shift_months: -1, liability_shift_days: 0, asset_shift_days: 0 }));
+  expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ liability_shift_months: -1, liability_shift_days: 0, asset_shift_days: 0 }));
+  expect(spy.mock.calls.at(-1)![0]).not.toHaveProperty("base");
   const table = screen.getByRole("region", { name: "Bucket table" });
   expect(within(table).getByText("−48.2M")).toBeInTheDocument();
   expect(screen.getByText(/Raise 6–12M funding – EUR 451.2M/)).toBeInTheDocument();
   expect(screen.getByText("LIA-000042")).toBeInTheDocument();
 });
 
-it("applies presets, the base toggle and the currency filter", async () => {
+it("is contractual only: no AI toggle, no preset buttons; currency filter and zero shift still work", async () => {
   page();
   await screen.findByText("LIA-000042");
-  await userEvent.click(screen.getByRole("button", { name: "Stress: both" }));
-  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ asset_shift_days: 14, liability_shift_months: -1 })));
-  await userEvent.click(screen.getByRole("tab", { name: "AI-adjusted base" }));
-  await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ base: "ai" })));
+  expect(screen.queryByRole("tab", { name: /AI-adjusted/ })).not.toBeInTheDocument();
+  for (const name of ["Liabilities 1 month earlier", "Assets 2 weeks later", "Stress: both", "Reset"])
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  expect(screen.getByText(/No ML model is used/)).toBeInTheDocument();
   await userEvent.selectOptions(screen.getByLabelText("Currency"), "USD");
   await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
-  await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+  const amount = screen.getByLabelText("Liability maturities (deposits): amount");
+  await userEvent.clear(amount);
+  await userEvent.type(amount, "0");
   expect(await screen.findByText("No contract changes bucket in this scenario.")).toBeInTheDocument();
+});
+
+it("chart: labelled change row, hover shows contractual vs scenario figures in words", async () => {
+  page();
+  await screen.findByText("LIA-000042");
+  const chart = screen.getByRole("region", { name: "Net gap chart" });
+  expect(within(chart).getByText("Change")).toBeInTheDocument();
+  expect(within(chart).getByText("Contractual")).toBeInTheDocument();
+  const hit = chart.querySelectorAll(".gapchart-hit")[0] as SVGRectElement;
+  await userEvent.click(hit);
+  const tip = await within(chart).findByRole("status");
+  expect(tip).toHaveTextContent("+140,600,000.00");
+  expect(tip).toHaveTextContent("+92,400,000.00");
+  expect(tip).toHaveTextContent("−48,200,000.00");
+  expect(tip).toHaveTextContent("Surplus shrinks by 48.2M");
 });
 
 it("edits a shift by hand: amount, unit and direction", async () => {
@@ -74,6 +92,26 @@ it("edits a shift by hand: amount, unit and direction", async () => {
   const dir = screen.getByRole("radiogroup", { name: "Asset maturities (loans): direction" });
   await userEvent.click(within(dir).getByRole("radio", { name: "later" }));
   await waitFor(() => expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({ asset_shift_days: 21, asset_shift_months: 0 })));
+});
+
+it("drops remembered results after an upload and never shows old figures under an error", async () => {
+  const first = page();
+  await screen.findByText("LIA-000042");
+  first.unmount();
+  client.clearAiCache();                                   // what a successful upload does
+  spy.mockImplementation(() => new Promise(() => {}));     // new data still loading
+  page();
+  expect(screen.getByText(/Running the scenario/)).toBeInTheDocument();
+  expect(screen.queryByText("LIA-000042")).not.toBeInTheDocument();
+});
+
+it("hides the previous result when a new request fails", async () => {
+  page();
+  await screen.findByText("LIA-000042");
+  spy.mockRejectedValue(new client.ApiError("NETWORK", "Cannot reach the server."));
+  await userEvent.selectOptions(screen.getByLabelText("Currency"), "USD");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Cannot reach the server.");
+  expect(screen.queryByText("LIA-000042")).not.toBeInTheDocument();
 });
 
 it("shows the server error", async () => {

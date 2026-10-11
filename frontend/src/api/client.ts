@@ -49,6 +49,10 @@ export interface Summary {
   books: Record<Book, Batch | null>;
   rows_stored_total: number;
   ready: boolean;
+  /** the historical log the model uses for this snapshot (same rule as the AI pages) */
+  model_history?: { id: string; as_of_date: string; same_date: boolean } | null;
+  /** newer uploads that are not part of the snapshot yet (e.g. only one book loaded for a later date) */
+  pending?: { book: Book; as_of_date: string }[];
 }
 
 export interface ErrorRow extends ErrorItem {
@@ -469,7 +473,15 @@ export interface AiTxnPage {
   page: number;
   page_size: number;
   calculation_date: string;
-  kpis: { count: number; cash_pulled_in: number | null; avg_p_early: number; avg_spread_pp: number };
+  kpis: {
+    count: number;
+    currencies?: string[];
+    /** only when the selection is a single currency (amounts in different currencies are never added) */
+    cash_pulled_in: number | null;
+    cash_pulled_in_by_currency?: Record<string, number> | null;
+    avg_p_early: number;
+    avg_spread_pp: number;
+  };
   summary: { assets: number; liabilities: number; net_gap: number; currency: string } | null;
   items: AiTxn[];
 }
@@ -577,8 +589,12 @@ const qb = (o: object) =>
  * refetches or recomputes. A successful upload clears it (see uploadBook), and failures are never stored. */
 const AI_TTL_MS = 10 * 60 * 1000;
 const aiStore = new Map<string, { at: number; promise: Promise<unknown> }>();
+let dataVersion = 0;
+/** Bumped on every successful upload: pages that keep results in memory compare it to drop stale ones. */
+export const getDataVersion = (): number => dataVersion;
 export function clearAiCache(): void {
   aiStore.clear();
+  dataVersion += 1;
 }
 function cachedJson<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
   const key = `${tokenProvider() ?? ""}|${path}|${JSON.stringify(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").sort())}`;
@@ -622,10 +638,8 @@ export const downloadHistoryPredictions = () =>
   downloadCsv("/api/behavioral/history-predictions.csv", {}, "liquidplus_history_predictions.csv");
 
 /* ------------------------------------------------------------------ what-if tenor shifts */
-export type WhatIfBase = "deterministic" | "ai";
 
 export interface WhatIfQuery {
-  base?: WhatIfBase;
   asset_shift_months?: number;
   asset_shift_days?: number;
   liability_shift_months?: number;
@@ -668,7 +682,7 @@ export interface WhatIfMover {
 
 export interface WhatIfResponse {
   metadata: {
-    base: WhatIfBase;
+    base: "deterministic";        // always the contractual ladder: no ML model in what-if
     as_of_date: string;
     calculation_date: string;
     currency: string;

@@ -25,3 +25,12 @@ it("links to /ladder once ready and states the stored row count", () => {
   expect(screen.getByText("2026-10-10")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /View deterministic ladder/ })).toHaveAttribute("href", "/ladder");
 });
+
+it("says which historical log the model uses and which newer uploads are not in use", () => {
+  wrap({ as_of_date: "2026-10-10", rows_stored_total: 1856, ready: false,
+         books: { asset: batch(), liability: batch({ id: "b2", book: "liability" }), historical: null },
+         model_history: { id: "h9", as_of_date: "2026-10-09", same_date: false },
+         pending: [{ book: "asset", as_of_date: "2026-10-11" }] });
+  expect(screen.getByText(/AI model uses the historical log of 2026-10-09/)).toBeInTheDocument();
+  expect(screen.getByText(/Not in use yet: asset 2026-10-11/)).toBeInTheDocument();
+});

@@ -458,8 +458,15 @@ def get_transactions(
                   moved_only or shifted_only)
     sel.sort(key=lambda t: (t[sort], t["transaction_id"]), reverse=(order == "desc"))
     moved_in = [t for t in sel if t.get("moved")]
-    kpis = {"count": len(sel),
-            "cash_pulled_in": float(sum((t["signed_cash"] for t in moved_in), Decimal(0))) if bucket else None,
+    by_ccy: dict[str, Decimal] = {}
+    for t in moved_in:                          # never add different currencies together (no FX rate)
+        by_ccy[t["currency"]] = by_ccy.get(t["currency"], Decimal(0)) + t["signed_cash"]
+    currencies = sorted({t["currency"] for t in sel})
+    kpis = {"count": len(sel), "currencies": currencies,
+            # one figure only when the selection is a single currency; otherwise see the per-currency split
+            "cash_pulled_in": float(by_ccy.get(currencies[0], Decimal(0)))
+            if bucket and len(currencies) == 1 else None,
+            "cash_pulled_in_by_currency": {k: float(v) for k, v in sorted(by_ccy.items())} if bucket else None,
             "avg_p_early": round(float(np.mean([t["p_early"] for t in sel])), 4) if sel else 0.0,
             "avg_spread_pp": round(float(np.mean([t["spread_pp"] for t in sel])), 4) if sel else 0.0}
     summary = None

@@ -502,14 +502,15 @@ def _when(b: dict) -> str:
 
 
 def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, view: str = "AI-adjusted",
-              base: str = "contractual view", cause: str = "Predicted early withdrawals") -> list[dict]:
+              base: str = "contractual view", cause: str | None = "Predicted early withdrawals") -> list[dict]:
     """One-line treasury actions from the AI-adjusted (behavioural) gap, read cumulatively like a treasury desk:
 
     1. a surplus in an earlier bucket is rolled forward to cover a later shortfall (no new money needed);
     2. whatever is still short is raised externally, with the instrument that fits that bucket, before it starts;
     3. surplus nobody needs later is invested (or kept liquid when the simulation shows real shortfall risk);
     4. near-term buckets also get a standby line for the simulated bad case (P5) and a retention action when
-       predicted early deposit withdrawals are what pushes them short.
+       deposits leaving EARLIER are what pushes them short (`cause` names why; None = deposits did not move
+       earlier, so no retention advice).
 
     Rows need: bucket, det_net, ai_net, ai/det assets/liabilities; optional p5, p_shortfall, start_date."""
     scope = f"{currency}{' · ' + location if location else ''}"
@@ -532,12 +533,14 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
         elif ai < 0:
             need = -ai
             park = INSTRUMENT[det.BUCKET_KEYS[det.BUCKET_KEYS.index(key) - 1]][1] if key != "0-1M" else None
+            used_from: list[str] = []
             for src in pool:                    # 1. roll earlier surplus forward
                 use = min(src[1], need)
                 if use <= 0:
                     continue
                 src[1] -= use
                 need -= use
+                used_from.append(src[0]["bucket"])
                 add(b, "cover", "low", f"Roll {money(use)} of {src[0]['bucket']} surplus into {park} – covers {key} gap",
                     f"The {src[0]['bucket']} surplus is not needed before {key}, so no new funding is required for this part.",
                     use)
@@ -547,15 +550,15 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
                 add(b, "fund", "high" if key in SHORT_TERM else "medium",
                     f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
                     f"{view} {key} gap is −{money(-ai)} ({base} {'+' if b['det_net'] >= 0 else '−'}"
-                    f"{money(abs(b['det_net']))})" + (f"; earlier surplus covers {money(-ai - need)}." if -ai - need > 0
-                                                      else "."), need)
+                    f"{money(abs(b['det_net']))})" + (f"; surplus rolled over from {', '.join(used_from)} covers "
+                                                      f"{money(-ai - need)}." if -ai - need > 0 else "."), need)
         if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
             extra = -p5 - max(0.0, -ai)
             if extra >= max(1.0, 0.05 * abs(p5)):
                 add(b, "buffer", "medium", f"Arrange standby line – {money(extra)} for {key} bad case",
                     f"In the 5% worst simulated outcomes the {key} gap reaches −{money(-p5)}.", extra)
         dl = b["ai_liabilities"] - b["det_liabilities"]
-        if ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):   # 4b. retention
+        if cause and ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):  # 4b
             add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
                 f"{cause} add {money(dl)} of outflows to {key}; see the contracts list for the clients.", dl)
 

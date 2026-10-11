@@ -184,3 +184,37 @@ def test_snapshot_is_cached_and_an_upload_refreshes_it(client, loaded):
     assert upload(client, "asset").status_code == 201        # re-upload -> new active batch
     second = js(client, "/api/behavioral/ladder")["metadata"]["asset_batch"]["id"]
     assert second != first
+
+
+def test_drilldown_never_adds_different_currencies(client, loaded):
+    mixed = js(client, "/api/behavioral/transactions", bucket="1-3M", moved_only=True, page_size=500)["kpis"]
+    assert len(mixed["currencies"]) > 1 and mixed["cash_pulled_in"] is None
+    by = mixed["cash_pulled_in_by_currency"]
+    assert set(by) <= set(mixed["currencies"]) and len(by) > 1
+    eur = js(client, "/api/behavioral/transactions", bucket="1-3M", currency="EUR", moved_only=True, page_size=500)["kpis"]
+    assert eur["currencies"] == ["EUR"] and eur["cash_pulled_in"] == pytest.approx(by["EUR"], abs=0.01)
+    assert eur["cash_pulled_in_by_currency"] == {"EUR": eur["cash_pulled_in"]}
+    assert js(client, "/api/behavioral/transactions", page_size=1)["kpis"]["cash_pulled_in"] is None   # no bucket
+
+
+def test_summary_ladder_and_model_use_the_same_snapshot(client):
+    for b in ("asset", "liability"):
+        assert upload(client, b).status_code == 201                                    # 10 Oct
+    upload(client, "historical", name="historical_log - 09102026.xlsx")                 # older log
+    upload(client, "historical", name="historical_log - 12102026.xlsx")                 # newer than the snapshot
+    upload(client, "asset", name="asset_book - 11102026.xlsx")                          # newer, but no liability
+    s = client.get("/api/ingest/summary", headers=auth()).json()
+    ladder = js(client, "/api/ladder")["metadata"]
+    ai = js(client, "/api/behavioral/ladder")["metadata"]
+    assert s["as_of_date"] == ladder["as_of_date"] == ai["as_of_date"] == "2026-10-10"
+    assert s["books"]["asset"]["as_of_date"] == "2026-10-10" and s["books"]["historical"] is None
+    assert s["pending"] == [{"book": "asset", "as_of_date": "2026-10-11"},
+                            {"book": "historical", "as_of_date": "2026-10-12"}]
+    assert s["model_history"] == {"id": ai["model"]["historical_batch"]["id"], "as_of_date": "2026-10-09",
+                                  "same_date": False}                                  # on or before the snapshot
+    upload(client, "historical")                                                        # same date wins
+    from app.services import behavioral_queries
+    behavioral_queries.invalidate()
+    s = client.get("/api/ingest/summary", headers=auth()).json()
+    assert s["ready"] is True and s["model_history"]["same_date"] is True
+    assert s["model_history"]["id"] == js(client, "/api/behavioral/ladder")["metadata"]["model"]["historical_batch"]["id"]

@@ -1,20 +1,20 @@
-"""What-if scenarios: shift asset and/or liability maturities (e.g. liabilities 1 month earlier, assets 2 weeks
-later) and see the effect on the gap ladder, starting from either the contractual (deterministic) ladder or the
-AI-adjusted one.
+"""What-if scenarios (problem statement, task xiii): shift asset and/or liability maturities (e.g. liabilities
+1 month earlier, assets 2 weeks later) and re-compute the CONTRACTUAL (deterministic) gap ladder with the adjusted
+maturities. No ML model is used: the base is exactly the deterministic ladder of /api/ladder.
 
 Rules
 * A shift moves the maturity used for bucketing: calendar months first (month-end clamps, like the ladder),
   then days. Negative = earlier, positive = later. Cash amounts never change, so the total net gap is the same.
 * A maturity shifted before the calculation date is due now: it lands in 0-1M (it does not disappear).
-* Contracts that are already past due in the base view keep their base treatment (past-due policy).
+* Contracts that are already past due keep their treatment (past-due policy).
 * Location scoping is the same as every other ladder: a standard user only sees their own location.
+* Recommended actions come from the rule-based engine (core/behavioral.recommend), applied to the scenario gaps.
 """
 
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -28,7 +28,6 @@ from .ladder import CURRENCIES, Policy
 
 router = APIRouter(prefix="/api/whatif", tags=["what-if"])
 
-Base = Literal["deterministic", "ai"]
 MAX_MOVERS = 100
 
 
@@ -97,12 +96,10 @@ def bucket_table(items: list[dict], calc: date) -> list[dict]:
     return rows
 
 
-def _base(user: CurrentUser, base: str, as_of_date: date | None, calc_date: date | None,
+def _base(user: CurrentUser, as_of_date: date | None, calc_date: date | None,
           policy: str) -> tuple[date, date, list[dict]]:
-    if base == "ai":
-        from .behavioral import _context                     # needs the historical model
-        c = _context(user, as_of_date, calc_date, policy)
-        return c["snapshot"], c["calc"], c["ai_items"]
+    """The contractual (deterministic) ladder: same snapshot, scoping, buckets and past-due policy as /api/ladder.
+    No ML model is involved anywhere in a what-if scenario (problem statement, task xiii)."""
     snapshot, _, rows = bq.fetch_live(get_engine(), user, as_of_date)
     calc = calc_date or snapshot
     items, _ = det.classify(rows, calc, policy)
@@ -111,7 +108,6 @@ def _base(user: CurrentUser, base: str, as_of_date: date | None, calc_date: date
 
 @router.get("")
 def what_if(
-    base: Base = Query("deterministic", description="start from the contractual or the AI-adjusted ladder"),
     asset_shift_months: int = Query(0, ge=-24, le=24, description="negative = earlier"),
     asset_shift_days: int = Query(0, ge=-365, le=365, description="negative = earlier (2 weeks = 14)"),
     liability_shift_months: int = Query(0, ge=-24, le=24),
@@ -127,7 +123,7 @@ def what_if(
     recommended actions for the scenario."""
     if currency and currency not in CURRENCIES:
         raise ApiError(422, "INVALID_FILTER", f"currency must be one of {sorted(CURRENCIES)}")
-    snapshot, calc, items = _base(user, base, as_of_date, calc_date, past_due_policy)
+    snapshot, calc, items = _base(user, as_of_date, calc_date, past_due_policy)
     currencies = sorted({t["currency"] for t in items})
     if not currencies:
         raise ApiError(409, "SNAPSHOT_NOT_READY", "No transactions in the snapshot you can see")
@@ -149,10 +145,12 @@ def what_if(
         {"bucket": r["bucket"], "start_date": r["start_date"], "det_net": r["base_net"], "ai_net": r["scen_net"],
          "det_assets": r["base_assets"], "ai_assets": r["scen_assets"],
          "det_liabilities": r["base_liabilities"], "ai_liabilities": r["scen_liabilities"]} for r in rows],
-        view="Scenario", base="base", cause="Deposits shifted earlier")
+        view="Scenario", base="base",
+        # retention advice only when deposits really leave EARLIER in this scenario (never for a later shift)
+        cause="Deposits shifted earlier" if shift_date(calc, *shifts["liability"]) < calc else None)
     label = f"Assets {describe(*shifts['asset'])} · liabilities {describe(*shifts['liability'])}"
     return {
-        "metadata": {"base": base, "as_of_date": snapshot.isoformat(), "calculation_date": calc.isoformat(),
+        "metadata": {"base": "deterministic", "as_of_date": snapshot.isoformat(), "calculation_date": calc.isoformat(),
                      "past_due_policy": past_due_policy, "scope_location": None if user.sees_all_locations else user.location,
                      "currency": currency, "location": location, "currencies": currencies, "locations": locations,
                      "shifts": {k: {"months": m, "days": d, "text": describe(m, d)} for k, (m, d) in shifts.items()},
@@ -174,8 +172,8 @@ def what_if(
                     "pulled_to_today": t["pulled_to_today"]} for t in movers[:MAX_MOVERS]],
         "recommendations": recs,
         "notes": [
-            f"Base: {'AI-adjusted (behavioural) maturities' if base == 'ai' else 'contractual maturities'}; "
-            "the shift is applied on top of it.",
+            "Base: the deterministic ladder (contractual maturities); the shift is applied on top of it. "
+            "No ML model is used in a what-if scenario.",
             "Months are calendar months (month-end clamps), then days. Amounts never change, only dates, so the "
             "total net gap is identical in both columns.",
             "A maturity shifted before the calculation date is treated as due now (0-1M).",

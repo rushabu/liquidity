@@ -65,6 +65,27 @@ export function WhyPanel({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
+/** Cash pulled into the bucket. One figure only for a single currency; several currencies are listed side by
+ *  side, never added together (there is no FX rate). */
+function CashPulled({ kpis, bucket }: { kpis: AiTxnPage["kpis"]; bucket: string }) {
+  const by = Object.entries(kpis.cash_pulled_in_by_currency ?? {});
+  const label = bucket ? `Cash pulled into ${bucket}` : "Cash pulled in";
+  if (!bucket) return <div className="kpi"><span>{label}</span><b>—</b><small>pick a bucket</small></div>;
+  if (kpis.cash_pulled_in !== null) {
+    const ccy = kpis.currencies?.[0] ?? "";
+    return <div className="kpi"><span>{label}</span><b className={kpis.cash_pulled_in < 0 ? "neg" : "pos"}>{formatSignedCompact(kpis.cash_pulled_in)}</b><small>{ccy}</small></div>;
+  }
+  return (
+    <div className="kpi"><span>{label}</span>
+      <ul className="ccy-split" aria-label="By currency">
+        {by.map(([c, v]) => <li key={c}><span>{c}</span> <b className={v < 0 ? "neg" : "pos"}>{formatSignedCompact(v)}</b></li>)}
+        {!by.length && <li>—</li>}
+      </ul>
+      <small>per currency, not added (no FX rate)</small>
+    </div>
+  );
+}
+
 export function DrillView({ shared, preset }: { shared: Shared; preset: DrillPreset | null }) {
   const { currency, setCurrency, location } = shared;
   const [bucket, setBucket] = useSticky<BucketKey | "">("ai.drill.bucket", preset?.bucket ?? "1-3M");
@@ -159,7 +180,7 @@ export function DrillView({ shared, preset }: { shared: Shared; preset: DrillPre
       {data && (
         <section className="kpi-row" aria-label="Selection">
           <div className="kpi"><span>Contracts in selection</span><b>{formatInt(data.kpis.count)}</b></div>
-          <div className="kpi"><span>{bucket ? `Cash pulled into ${bucket}` : "Cash pulled in"}</span><b className={(data.kpis.cash_pulled_in ?? 0) < 0 ? "neg" : "pos"}>{data.kpis.cash_pulled_in === null ? "—" : formatSignedCompact(data.kpis.cash_pulled_in)}</b><small>{currency ? "" : "mixed currencies"}</small></div>
+          <CashPulled kpis={data.kpis} bucket={bucket} />
           <div className="kpi"><span>Avg P(early)</span><b>{formatPct(data.kpis.avg_p_early)}</b></div>
           <div className="kpi"><span>Avg spread</span><b>{sign(data.kpis.avg_spread_pp)} pp</b></div>
         </section>

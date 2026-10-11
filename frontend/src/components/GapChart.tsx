@@ -14,7 +14,7 @@ const BAR_GAP = 2;
 const TIP_W = 300;
 
 /** Clean axis figures: 0, 250M, 500M, 1.5B. */
-const axisLabel = (n: number): string => {
+export const axisLabel = (n: number): string => {
   const [d, u] = n >= 1e9 ? [1e9, "B"] : n >= 1e6 ? [1e6, "M"] : n >= 1e3 ? [1e3, "K"] : [1, ""];
   return `${+(n / d).toFixed(2)}${u}`;
 };
@@ -28,7 +28,7 @@ function niceTicks(max: number, count = 4): number[] {
 }
 
 /** Column with a 4px rounded data end and a square foot on the baseline. */
-const column = (x: number, y: number, w: number, h: number): string => {
+export const column = (x: number, y: number, w: number, h: number): string => {
   const r = Math.min(4, w / 2, h);
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 };
@@ -37,7 +37,7 @@ const signed = (n: number) => (n > 0 ? `+${formatCompact(n)}` : formatCompact(n)
 const signedMoney = (n: number) => (n > 0 ? `+${formatMoney(n)}` : formatMoney(n));
 const ARROW = { surplus: "▲", shortfall: "▼", balanced: "●" } as const;
 
-function useWidth(fallback: number) {
+export function useWidth(fallback: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(fallback);
   useEffect(() => {

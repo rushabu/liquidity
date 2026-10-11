@@ -158,3 +158,17 @@ it("the response store answers repeated requests from memory and is cleared on d
   await client.getModelCard();
   expect(fetchSpy).toHaveBeenCalledTimes(2);
 });
+
+it("Drill-down never adds different currencies: one figure per currency instead", async () => {
+  vi.spyOn(client, "getAiTransactions").mockResolvedValue({
+    ...txnPage,
+    kpis: { ...txnPage.kpis, currencies: ["EUR", "USD"], cash_pulled_in: null, cash_pulled_in_by_currency: { EUR: -3.89e6, USD: 12.5e6 } },
+  });
+  vi.spyOn(client, "getAiExplanation").mockResolvedValue(explanation);
+  show("/ai?view=drill");
+  const split = await screen.findByRole("list", { name: "By currency" });
+  expect(within(split).getByText("EUR")).toBeInTheDocument();
+  expect(within(split).getByText("−3.9M")).toBeInTheDocument();
+  expect(within(split).getByText("+12.5M")).toBeInTheDocument();
+  expect(screen.getByText(/not added \(no FX rate\)/)).toBeInTheDocument();
+});
