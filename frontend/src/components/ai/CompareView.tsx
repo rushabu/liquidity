@@ -1,31 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAiLadder, getAiTransactions, getComparison, getLadderCached, getWhy, type ApiError, type CompareResponse, type Recommendation, type Segment, type Side } from "../../api/client";
+import { getAiLadder, getAiTransactions, getComparison, getLadderCached, getWhy, type ApiError, type CompareResponse, type Segment, type Side } from "../../api/client";
 import { formatInt, formatMoney, formatPct, formatSignedCompact } from "../../lib/format";
 import { useSticky } from "../../lib/sticky";
+import { Actions } from "../Actions";
 import { MonthlyChart } from "./MonthlyChart";
 import type { DrillPreset, PageMeta, Shared } from "./types";
-
-const SEVERITY = { high: "error", medium: "warning", low: "success" } as const;
-const KIND: Record<Recommendation["kind"], string> = {
-  fund: "Fund", cover: "Roll over", retain: "Retain", buffer: "Standby", keep_liquid: "Invest short", invest: "Invest",
-};
-
-export function Actions({ items, empty, compact = false }: { items: Recommendation[]; empty: string; compact?: boolean }) {
-  if (!items.length) return <p className="empty">{empty}</p>;
-  return (
-    <ol className="actions">
-      {items.map((r) => (
-        <li key={`${r.scope}-${r.bucket}-${r.action}`}>
-          <span className="chip" data-tone={SEVERITY[r.severity]} title={`${r.severity} priority`}>{KIND[r.kind] ?? r.severity}</span>
-          <div>
-            <b>{r.action}</b> <span className="meta">{r.scope} · {r.bucket}</span>
-            <p>{compact ? r.rationale.split(/(?<=\.)\s/)[0] : r.rationale}</p>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
-}
 
 /** Warm the other tabs in the background (the server has the snapshot hot now), so they open instantly.
  *  Same parameters as their first request, so the response store answers them from memory. */

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getDataVersion, getWhatIf, type ApiError, type WhatIfQuery, type WhatIfResponse } from "../api/client";
-import { Actions } from "../components/ai/CompareView";
+import { Actions } from "../components/Actions";
 import { WhatIfChart } from "../components/WhatIfChart";
 import { formatInt, formatMoney, formatSignedCompact } from "../lib/format";
 import { useSticky } from "../lib/sticky";

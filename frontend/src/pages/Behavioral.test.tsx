@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
 import * as client from "../api/client";
 import { clearSticky } from "../lib/sticky";
 import { AiGapPage } from "./AiGapPage";
+import { ComparePage } from "./ComparePage";
 
 beforeEach(() => { clearSticky(); client.clearAiCache(); });
 afterEach(() => vi.restoreAllMocks());
@@ -65,11 +66,14 @@ const explanation: client.AiExplanation = {
     { feature: "client_rating", label: "Client rating", value: "Client rating 4", log_odds: -0.08, effect_pp: -2, direction: "lowers" }] },
 };
 
-const show = (url = "/ai") => render(<MemoryRouter initialEntries={[url]}><AiGapPage /></MemoryRouter>);
+const show = (url = "/ai") => render(
+  <MemoryRouter initialEntries={[url]}>
+    <Routes><Route path="/ai" element={<AiGapPage />} /><Route path="/compare" element={<ComparePage />} /></Routes>
+  </MemoryRouter>);
 
-it("Compare shows KPIs, both nets per bucket, the selected month and the actions", async () => {
+it("Comparison page shows KPIs, both nets per bucket, the selected month and the actions", async () => {
   vi.spyOn(client, "getComparison").mockResolvedValue(comparison());
-  show();
+  show("/compare");
   expect(await screen.findByText("21 / 373")).toBeInTheDocument();
   expect(screen.getByText(/calculation date 2026-10-10 · model early-exit-logit-v2/)).toBeInTheDocument();
   const table = screen.getByRole("region", { name: "Bucket comparison" });
@@ -83,11 +87,11 @@ it("Compare shows KPIs, both nets per bucket, the selected month and the actions
   expect(screen.getByText(/−392.4M \(same\)/)).toBeInTheDocument();
 });
 
-it("Compare re-queries on filters and a bucket click opens the drill-down for that bucket", async () => {
+it("Comparison re-queries on filters and a bucket click opens the drill-down for that bucket", async () => {
   const cmp = vi.spyOn(client, "getComparison").mockResolvedValue(comparison());
   const txns = vi.spyOn(client, "getAiTransactions").mockResolvedValue(txnPage);
   vi.spyOn(client, "getAiExplanation").mockResolvedValue(explanation);
-  show();
+  show("/compare");
   await userEvent.selectOptions(await screen.findByLabelText("Side"), "liability");
   await waitFor(() => expect(cmp).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "EUR", side: "liability" })));
   await userEvent.click(within(screen.getByRole("region", { name: "Bucket comparison" })).getByRole("button", { name: "1-3M" }));
@@ -128,24 +132,50 @@ it("Drill-down lists contracts with reasons, explains the selected one and expor
 
 it("explains a missing historical log", async () => {
   vi.spyOn(client, "getComparison").mockRejectedValue(new client.ApiError("MODEL_NOT_READY", "The behavioural model needs the historical log.", 409));
-  show();
+  show("/compare");
   expect(await screen.findByRole("alert")).toHaveTextContent(/historical log/);
 });
 
-it("keeps data and filters when switching tabs: no second request", async () => {
-  const cmp = vi.spyOn(client, "getComparison").mockResolvedValue(comparison());
+it("Probabilistic ladder: tabs are Ladder, Why it changed, Drill-down; switching keeps data (no second request)", async () => {
   const w = vi.spyOn(client, "getWhy").mockImplementation((p) => Promise.resolve(why(p?.market_shift_pp ?? 0)));
-  show();
-  await userEvent.selectOptions(await screen.findByLabelText("Segment"), "Retail");
-  await waitFor(() => expect(cmp).toHaveBeenCalledTimes(2));
-  await userEvent.click(screen.getByRole("tab", { name: "Why it changed" }));
+  const txns = vi.spyOn(client, "getAiTransactions").mockResolvedValue(txnPage);
+  vi.spyOn(client, "getAiExplanation").mockResolvedValue(explanation);
+  show("/ai?view=why");
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Ladder", "Why it changed", "Drill-down"]);
   expect(await screen.findByText("Retail deposits")).toBeInTheDocument();
-  const whyCalls = w.mock.calls.length;
-  await userEvent.click(screen.getByRole("tab", { name: "Compare" }));
-  expect(screen.getByLabelText("Segment")).toHaveValue("Retail");             // filter kept
+  await userEvent.click(screen.getByRole("tab", { name: "Drill-down" }));
+  await screen.findByRole("button", { name: "Why LIA-008646" });
+  const calls = [w.mock.calls.length, txns.mock.calls.length];
   await userEvent.click(screen.getByRole("tab", { name: "Why it changed" }));
-  expect(cmp).toHaveBeenCalledTimes(2);                                      // nothing refetched
-  expect(w).toHaveBeenCalledTimes(whyCalls);
+  await userEvent.click(screen.getByRole("tab", { name: "Drill-down" }));
+  expect([w.mock.calls.length, txns.mock.calls.length]).toEqual(calls);
+});
+
+it("old ?view=compare links go to the Comparison page", async () => {
+  vi.spyOn(client, "getComparison").mockResolvedValue(comparison());
+  show("/ai?view=compare");
+  expect(await screen.findByRole("heading", { name: "Comparison" })).toBeInTheDocument();
+});
+
+it("each action shows where it comes from on hover", async () => {
+  const c = comparison();
+  c.recommendations[0].evidence = { bucket_start: "2026-11-11", bucket_end: "2027-01-10", view: "AI-adjusted", base: "contractual view",
+    rule: "1-3M net gap is negative after using all earlier surplus: the rest must be raised before the bucket starts.",
+    sources: ["0-1M"], figures: [{ label: "Net gap (AI-adjusted)", value: -49e6 }, { label: "Still to raise", value: 49e6 }] };
+  vi.spyOn(client, "getComparison").mockResolvedValue(c);
+  show("/compare");
+  const card = (await screen.findByText(/Raise 3M funding/)).closest("li")!;
+  await userEvent.hover(card);
+  const tip = await within(card).findByRole("tooltip");
+  expect(tip).toHaveTextContent("Where this comes from");
+  expect(tip).toHaveTextContent("11 Nov 2026 → 10 Jan 2027");
+  expect(tip).toHaveTextContent("rest must be raised before the bucket starts");
+  expect(tip).toHaveTextContent("−EUR 49,000,000.00");
+  expect(tip).toHaveTextContent("Cash comes from: 0-1M");
+  await userEvent.unhover(card);
+  expect(within(card).queryByRole("tooltip")).not.toBeInTheDocument();
+  await userEvent.click(within(card).getByRole("button", { name: "Where from?" }));      // keyboard / touch
+  expect(within(card).getByRole("tooltip")).toBeInTheDocument();
 });
 
 it("the response store answers repeated requests from memory and is cleared on demand", async () => {

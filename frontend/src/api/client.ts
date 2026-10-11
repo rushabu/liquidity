@@ -393,6 +393,16 @@ export interface Recommendation {
   amount: number;
   deterministic_net: number;
   ai_net: number;
+  /** where the action comes from: the bucket window, the rule that fired and the figures it used */
+  evidence?: {
+    bucket_start: string | null;
+    bucket_end: string | null;
+    view: string;
+    base: string;
+    rule: string;
+    sources: BucketKey[];
+    figures: { label: string; value: number }[];
+  };
 }
 
 export interface CompareResponse {

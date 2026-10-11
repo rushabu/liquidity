@@ -218,3 +218,19 @@ def test_summary_ladder_and_model_use_the_same_snapshot(client):
     s = client.get("/api/ingest/summary", headers=auth()).json()
     assert s["ready"] is True and s["model_history"]["same_date"] is True
     assert s["model_history"]["id"] == js(client, "/api/behavioral/ladder")["metadata"]["model"]["historical_batch"]["id"]
+
+
+def test_every_action_says_where_it_comes_from(client, loaded):
+    c = js(client, "/api/behavioral/compare", currency="EUR")
+    assert all(r["evidence"]["rule"] and r["evidence"]["figures"] for r in c["overview"])
+    for r in c["recommendations"]:
+        ev = r["evidence"]
+        assert ev["rule"] and ev["figures"] and ev["bucket_start"]
+        b = next(x for x in c["buckets"] if x["bucket"] == r["bucket"])
+        assert ev["bucket_start"] == b["start_date"] and ev["bucket_end"] == b["end_date"]
+        if r["kind"] == "fund":
+            fig = {f["label"]: f["value"] for f in ev["figures"]}
+            assert fig["Still to raise"] == pytest.approx(r["amount"], abs=0.05)
+            assert fig["Net gap (AI-adjusted)"] == pytest.approx(b["ai_net"], abs=0.05)
+        if r["kind"] == "cover":
+            assert ev["sources"] and ev["sources"][0] in [x["bucket"] for x in c["buckets"]]

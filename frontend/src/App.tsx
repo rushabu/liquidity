@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, RequireAuth } from "./auth/AuthContext";
 import { TopBar } from "./components/TopBar";
 import { AiGapPage } from "./pages/AiGapPage";
+import { ComparePage } from "./pages/ComparePage";
 import { LadderPage } from "./pages/LadderPage";
 import { LoginPage } from "./pages/LoginPage";
 import { UploadPage } from "./pages/UploadPage";
@@ -28,8 +29,8 @@ export default function App() {
           <Route path="/ladder" element={<LadderPage />} />
           <Route path="/ai" element={<AiGapPage />} />
           <Route path="/whatif" element={<WhatIfPage />} />
-          <Route path="/ai-ladder" element={<Navigate to="/ai?view=ladder" replace />} />
-          <Route path="/compare" element={<Navigate to="/ai" replace />} />
+          <Route path="/ai-ladder" element={<Navigate to="/ai" replace />} />
+          <Route path="/compare" element={<ComparePage />} />
           <Route path="*" element={<Navigate to="/upload" replace />} />
         </Route>
       </Routes>

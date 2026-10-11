@@ -518,11 +518,17 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
     money = lambda v: f"{currency} {_fmt_amt(v)}"
     out: list[dict] = []
 
-    def add(b: dict, kind: str, severity: str, action: str, why: str, amount: float) -> None:
+    def add(b: dict, kind: str, severity: str, action: str, why: str, amount: float,
+            rule: str = "", figures: list | None = None, sources: list | None = None) -> None:
+        """`evidence` = exactly where the action comes from, for the hover card: the bucket window, the rule
+        that fired and the figures it used (all in `currency`)."""
         out.append({"currency": currency, "location": location, "scope": scope, "bucket": b["bucket"],
                     "kind": kind, "severity": severity, "action": action, "rationale": why,
                     "amount": round(amount, 2), "deterministic_net": round(b["det_net"], 2),
-                    "ai_net": round(b["ai_net"], 2)})
+                    "ai_net": round(b["ai_net"], 2),
+                    "evidence": {"bucket_start": b.get("start_date"), "bucket_end": b.get("end_date"),
+                                 "view": view, "base": base, "rule": rule, "sources": sources or [],
+                                 "figures": [{"label": k, "value": round(float(v), 2)} for k, v in (figures or [])]}})
 
     pool: list[list] = []                       # [source row, surplus still unallocated], oldest first
     for b in rows:
@@ -543,7 +549,10 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
                 used_from.append(src[0]["bucket"])
                 add(b, "cover", "low", f"Roll {money(use)} of {src[0]['bucket']} surplus into {park} – covers {key} gap",
                     f"The {src[0]['bucket']} surplus is not needed before {key}, so no new funding is required for this part.",
-                    use)
+                    use, f"{key} is short, and the earlier {src[0]['bucket']} bucket still has unused surplus: roll it "
+                         f"forward first (cheapest source of cash).",
+                    [(f"{src[0]['bucket']} surplus ({view})", src[0]["ai_net"]), (f"{key} gap ({view})", ai),
+                     (f"Rolled into {key}", use)], [src[0]["bucket"]])
                 if need <= 0:
                     break
             if need > 0:                        # 2. raise the rest
@@ -551,16 +560,29 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
                     f"Raise {TENOR[key]} funding – {money(need)} via {INSTRUMENT[key][0]}{_when(b)}",
                     f"{view} {key} gap is −{money(-ai)} ({base} {'+' if b['det_net'] >= 0 else '−'}"
                     f"{money(abs(b['det_net']))})" + (f"; surplus rolled over from {', '.join(used_from)} covers "
-                                                      f"{money(-ai - need)}." if -ai - need > 0 else "."), need)
+                                                      f"{money(-ai - need)}." if -ai - need > 0 else "."), need,
+                    f"{key} net gap is negative after using all earlier surplus: the rest must be raised before the "
+                    f"bucket starts." + (" Short-term bucket, so high priority." if key in SHORT_TERM else ""),
+                    [(f"Assets in {key} ({view})", b["ai_assets"]), (f"Liabilities in {key} ({view})", b["ai_liabilities"]),
+                     (f"Net gap ({view})", ai), (f"Net gap ({base})", b["det_net"]),
+                     ("Covered by earlier surplus", -ai - need), ("Still to raise", need)], used_from)
         if key in SHORT_TERM and p5 is not None and p5 < min(ai, 0):   # 4a. bad-case standby
             extra = -p5 - max(0.0, -ai)
             if extra >= max(1.0, 0.05 * abs(p5)):
                 add(b, "buffer", "medium", f"Arrange standby line – {money(extra)} for {key} bad case",
-                    f"In the 5% worst simulated outcomes the {key} gap reaches −{money(-p5)}.", extra)
+                    f"In the 5% worst simulated outcomes the {key} gap reaches −{money(-p5)}.", extra,
+                    f"Near-term bucket whose bad case (P5 of the Monte Carlo runs) is worse than the expected gap: keep "
+                    f"a committed line for the difference.",
+                    [(f"Expected net gap ({view})", ai), ("Bad case (P5)", p5), ("Standby needed", extra)]
+                    + ([("Chance of a shortfall", b["p_shortfall"] * 100)] if b.get("p_shortfall") is not None else []))
         dl = b["ai_liabilities"] - b["det_liabilities"]
         if cause and ai < 0 and key in SHORT_TERM + ("3-12M",) and dl >= max(1.0, 0.01 * b["det_liabilities"]):  # 4b
             add(b, "retain", "medium", f"Offer retention to early-withdrawal deposits – {money(dl)} in {key}",
-                f"{cause} add {money(dl)} of outflows to {key}; see the contracts list for the clients.", dl)
+                f"{cause} add {money(dl)} of outflows to {key}; see the contracts list for the clients.", dl,
+                f"{key} is short and its deposit outflows are higher than contracted because deposits leave earlier: "
+                f"keeping those deposits removes the extra outflow.",
+                [(f"Deposit outflows ({base})", b["det_liabilities"]), (f"Deposit outflows ({view})", b["ai_liabilities"]),
+                 ("Extra outflow", dl), (f"Net gap ({view})", ai)])
 
     for src, left in pool:                      # 3. surplus nobody needs later
         if left <= 0:
@@ -570,10 +592,17 @@ def recommend(currency: str, location: str | None, buckets: Sequence[dict], *, v
             shorter = INSTRUMENT[det.BUCKET_KEYS[max(0, det.BUCKET_KEYS.index(key) - 1)]][1]
             add(src, "keep_liquid", "medium",
                 f"Invest {key} surplus short – {money(left)} in {shorter} ({p_short:.0%} shortfall risk)",
-                f"Expected surplus, but the bad case is −{money(-p5)}, so do not lock it into {INSTRUMENT[key][1]}.", left)
+                f"Expected surplus, but the bad case is −{money(-p5)}, so do not lock it into {INSTRUMENT[key][1]}.", left,
+                f"Surplus not needed by any later bucket, but the simulation shows it can turn negative: invest it one "
+                f"tenor shorter so it stays available.",
+                [(f"Surplus ({view})", src["ai_net"]), ("Unused after later buckets", left), ("Bad case (P5)", p5),
+                 ("Chance of a shortfall", p_short * 100)])
         else:
             add(src, "invest", "low", f"Invest surplus – {money(left)} in {INSTRUMENT[key][1]}",
-                f"Not needed by any later bucket{f'; shortfall risk {p_short:.0%}' if p_short else ''}.", left)
+                f"Not needed by any later bucket{f'; shortfall risk {p_short:.0%}' if p_short else ''}.", left,
+                f"Surplus left after covering every later shortfall: invest it for the bucket's tenor.",
+                [(f"Surplus ({view})", src["ai_net"]), ("Used by later buckets", src["ai_net"] - left),
+                 ("Left to invest", left)])
 
     kinds = ["fund", "retain", "buffer", "keep_liquid", "cover", "invest"]
     out.sort(key=lambda r: (_RANK[r["severity"]], det.BUCKET_KEYS.index(r["bucket"]), kinds.index(r["kind"])))

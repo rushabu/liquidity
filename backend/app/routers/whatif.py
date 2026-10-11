@@ -142,7 +142,7 @@ def what_if(
     movers.sort(key=lambda t: (-t["cash_at_maturity"], t["transaction_id"]))
     worst = lambda key: min(rows, key=lambda r: r[key])
     recs = bm.recommend(currency, location, [
-        {"bucket": r["bucket"], "start_date": r["start_date"], "det_net": r["base_net"], "ai_net": r["scen_net"],
+        {"bucket": r["bucket"], "start_date": r["start_date"], "end_date": r["end_date"], "det_net": r["base_net"], "ai_net": r["scen_net"],
          "det_assets": r["base_assets"], "ai_assets": r["scen_assets"],
          "det_liabilities": r["base_liabilities"], "ai_liabilities": r["scen_liabilities"]} for r in rows],
         view="Scenario", base="base",

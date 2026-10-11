@@ -16,8 +16,9 @@ export function TopBar() {
       </NavLink>
       <nav className="topnav" aria-label="Main">
         <NavLink to="/upload">Data ingestion</NavLink>
-        <NavLink to="/ladder">Gap ladder · deterministic</NavLink>
-        <NavLink to="/ai" className="ai-nav">AI gap ladder <span className="ai-badge">AI</span></NavLink>
+        <NavLink to="/ladder">Deterministic ladder</NavLink>
+        <NavLink to="/ai" className="ai-nav">Probabilistic ladder <span className="ai-badge">AI</span></NavLink>
+        <NavLink to="/compare">Comparison</NavLink>
         <NavLink to="/whatif">What-if</NavLink>
       </nav>
       {user && (
