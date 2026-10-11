@@ -103,7 +103,14 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; details?: Record<string, unknown> };
 }
 
+let onUnauthorized: (() => void) | null = null;
+/** The auth module registers what to do when the API says the token is missing, expired or revoked. */
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
 function toApiError(status: number, body: unknown, requestId?: string): ApiError {
+  if (status === 401 && onUnauthorized) queueMicrotask(() => onUnauthorized?.());
   const e = (body as ErrorEnvelope | null)?.error;
   return new ApiError(e?.code ?? "HTTP_ERROR", e?.message ?? `Request failed (${status})`, status, e?.details ?? {}, requestId);
 }

@@ -6,6 +6,7 @@ import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/tokens.css";
 import "./styles/global.css";
 import "./styles/app.css";
+import "./styles/auth.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";

@@ -1,6 +1,8 @@
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
 export function TopBar() {
+  const { user, logout } = useAuth();
   return (
     <header className="topbar">
       <NavLink to="/upload" className="brand" aria-label="Liquid+ home">
@@ -16,6 +18,15 @@ export function TopBar() {
         <NavLink to="/ai" className="ai-nav">AI gap ladder <span className="ai-badge">AI</span></NavLink>
         <NavLink to="/whatif">What-if</NavLink>
       </nav>
+      {user && (
+        <div className="userbox">
+          <span className="who" title={user.email ?? undefined}>
+            <span className="role-chip" data-role={user.role}>{user.role === "support" ? "Support" : "Standard"}</span>
+            <span className="scope">{user.scope}</span>
+          </span>
+          <button type="button" className="btn secondary small" onClick={() => logout()}>Sign out</button>
+        </div>
+      )}
     </header>
   );
 }

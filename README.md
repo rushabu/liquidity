@@ -273,3 +273,24 @@ Needs the historical log uploaded (409 `MODEL_NOT_READY` otherwise).
   mounted once opened; filters, selected bucket/contract and the scenario survive switching tabs and pages.
   Opening Compare pre-loads the other tabs in the background. New dependency: `numpy`. Tests: `tests/unit/test_behavioral_core.py`, `tests/integration/test_behavioral_api.py`,
 `frontend/src/pages/Behavioral.test.tsx`.
+
+
+## Login and role-based access
+
+Users sign in on `/login` with predefined credentials (Supabase Auth users created by
+`python -m scripts.setup_supabase seed-users`). The browser only talks to our API:
+
+1. `POST /api/auth/login {email, password}`: the API signs in against Supabase Auth with the publishable key
+   (`SUPABASE_ANON_KEY`), verifies the token, rejects accounts without a role/location (403 `NO_ROLE`) and writes
+   a `LOGIN` / `LOGIN_FAILED` audit row. Returns the session and the user's profile.
+2. Every other call sends `Authorization: Bearer <access token>`; the API verifies it (JWKS or `JWT_SECRET`) and
+   reads `app_metadata.role` / `app_metadata.location` (only the service key can write these).
+3. `POST /api/auth/refresh` renews the session a minute before it expires; any 401 signs the user out.
+
+| Role | Sees | Uploads |
+|---|---|---|
+| `standard` | only its `location` (e.g. Singapore): ladders, AI pages, what-if, drill-downs, exports | no |
+| `support` | all locations | yes |
+
+The session lives in `sessionStorage` (per browser tab). Signing out or switching user wipes every remembered
+response and page state, so one user never sees another user's data.

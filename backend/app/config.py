@@ -31,7 +31,9 @@ class Settings(BaseSettings):
     jwt_audience: str = "authenticated"
     # Only used by scripts/setup_supabase.py (never by the API, never in the browser).
     supabase_service_role_key: str = ""
-    supabase_anon_key: str = ""        # publishable key; used only to sign in from scripts/get_token.py
+    # Publishable key (sb_publishable_...): the API's /api/auth/login signs users in with it (and
+    # scripts/get_token.py). Never sent to the browser.
+    supabase_anon_key: str = ""
     seed_user_password: str = ""
     # Local development only. Returns a Support user without a token.
     dev_auth_bypass: bool = False

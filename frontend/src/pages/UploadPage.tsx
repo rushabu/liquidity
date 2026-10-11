@@ -6,9 +6,12 @@ import { CalcDateBox } from "../components/CalcDateBox";
 import { ErrorReportTable } from "../components/ErrorReportTable";
 import { SnapshotStrip } from "../components/SnapshotStrip";
 import { BOOKS } from "../lib/books";
+import { useUser } from "../auth/AuthContext";
 import { isValidIsoDate } from "../lib/dates";
 
 export function UploadPage() {
+  const user = useUser();
+  const canUpload = user?.can_upload ?? true;
   const [asOf, setAsOf] = useState("");
   const [source, setSource] = useState<"filename" | "manual" | "none">("none");
   const touched = useRef(false);            // true once the user typed a date themselves
@@ -57,11 +60,18 @@ export function UploadPage() {
 
       {pageError && <p className="banner" role="alert">Could not load the current snapshot: {pageError}</p>}
 
-      <div className="grid-3">
-        {BOOKS.map((b) => (
-          <BookCard key={b.book} {...b} asOf={validAsOf} onFileChosen={onFileChosen} onUploaded={() => void refresh()} />
-        ))}
-      </div>
+      {canUpload ? (
+        <div className="grid-3">
+          {BOOKS.map((b) => (
+            <BookCard key={b.book} {...b} asOf={validAsOf} onFileChosen={onFileChosen} onUploaded={() => void refresh()} />
+          ))}
+        </div>
+      ) : (
+        <p className="banner info" role="note">
+          You are signed in as a <b>{user?.location}</b> user: you can view {user?.location} data on every page.
+          Uploading the books is done by a Support user.
+        </p>
+      )}
 
       <SnapshotStrip summary={summary} />
       <ErrorReportTable refreshKey={refreshKey} />
