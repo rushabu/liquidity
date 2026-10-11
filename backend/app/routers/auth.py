@@ -5,8 +5,9 @@ with the publishable key, checks that the account has a role (and a location for
 audit row, and returns the Supabase session. Every other endpoint verifies that access token
 (app/deps.py) and scopes data by the role/location claims in app_metadata, which only the service key can set.
 
-Roles (problem statement, task xii):
+Roles (problem statement, task xii, plus a read-only global role):
 * standard - sees only the data of its assigned location (e.g. a Singapore user cannot access London data)
+* viewer   - sees every location, read-only (cannot upload)
 * support  - cross-location access: all branches, plus uploads
 """
 
@@ -21,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from ..config import get_settings
 from ..db import get_engine
-from ..deps import CurrentUser, _decode, get_current_user
+from ..deps import ROLES, CurrentUser, _decode, get_current_user
 from ..services.errors import ApiError
 from ..services.ingestion import _audit_best_effort
 
@@ -43,7 +44,7 @@ class RefreshIn(BaseModel):
 
 def _profile(user: CurrentUser) -> dict:
     return {"id": user.id, "email": user.email, "role": user.role, "location": user.location,
-            "scope": "All locations" if user.is_support else user.location,
+            "scope": "All locations" if user.sees_all_locations else user.location,
             "can_upload": user.role in get_settings().upload_roles}
 
 
@@ -74,7 +75,7 @@ def _session(data: dict) -> tuple[dict, CurrentUser]:
     meta = claims.get("app_metadata") or {}
     user = CurrentUser(id=claims["sub"], email=claims.get("email"), role=meta.get("role") or "standard",
                        location=meta.get("location"))
-    if user.role not in ("support", "standard") or (user.role == "standard" and user.location not in LOCATIONS):
+    if user.role not in ROLES or (user.role == "standard" and user.location not in LOCATIONS):
         raise ApiError(403, "NO_ROLE", "This account has no role or location assigned. Ask an administrator to run "
                                        "scripts/setup_supabase seed-users.")
     expires_at = int(data.get("expires_at") or (time.time() + int(data.get("expires_in", 3600))))

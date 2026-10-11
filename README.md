@@ -290,6 +290,7 @@ Users sign in on `/login` with predefined credentials (Supabase Auth users creat
 | Role | Sees | Uploads |
 |---|---|---|
 | `standard` | only its `location` (e.g. Singapore): ladders, AI pages, what-if, drill-downs, exports | no |
+| `viewer` | all locations (read-only, e.g. `innoversite@liquidplus.dev`) | no |
 | `support` | all locations | yes |
 
 The session lives in `sessionStorage` (per browser tab). Signing out or switching user wipes every remembered

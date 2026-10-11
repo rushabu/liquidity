@@ -153,7 +153,7 @@ def what_if(
     label = f"Assets {describe(*shifts['asset'])} · liabilities {describe(*shifts['liability'])}"
     return {
         "metadata": {"base": base, "as_of_date": snapshot.isoformat(), "calculation_date": calc.isoformat(),
-                     "past_due_policy": past_due_policy, "scope_location": None if user.is_support else user.location,
+                     "past_due_policy": past_due_policy, "scope_location": None if user.sees_all_locations else user.location,
                      "currency": currency, "location": location, "currencies": currencies, "locations": locations,
                      "shifts": {k: {"months": m, "days": d, "text": describe(m, d)} for k, (m, d) in shifts.items()},
                      "scenario": label},

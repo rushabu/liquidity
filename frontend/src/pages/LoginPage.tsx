@@ -6,7 +6,8 @@ import { useAuth } from "../auth/AuthContext";
 /** Predefined accounts (problem statement: "log in with predefined credentials"). Passwords are never shown here;
  *  they are set by scripts/setup_supabase.py (SEED_USER_PASSWORD) and handed out by the team. */
 const DEMO_ACCOUNTS = [
-  { email: "support@liquidplus.dev", label: "Support · all locations" },
+  { email: "support@liquidplus.dev", label: "Support · all locations + upload" },
+  { email: "innoversite@liquidplus.dev", label: "Viewer · all locations, read-only" },
   { email: "singapore@liquidplus.dev", label: "Singapore" },
   { email: "london@liquidplus.dev", label: "London" },
   { email: "hongkong@liquidplus.dev", label: "Hong Kong" },
@@ -73,7 +74,7 @@ export function LoginPage() {
               </li>
             ))}
           </ul>
-          <p className="meta">Standard users see only their location. Support users see every location and can upload data.</p>
+          <p className="meta">Standard users see only their location. Viewers see every location but cannot upload. Support users see every location and can upload data.</p>
         </details>
       </section>
     </main>

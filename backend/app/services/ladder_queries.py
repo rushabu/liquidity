@@ -22,7 +22,7 @@ COLS = ("transaction_id, entity, location, customer_id, {amt} as amount, currenc
 
 def allowed_location(user: CurrentUser) -> str | None:
     """None = all locations (Support). A standard user sees only their own location."""
-    if user.is_support:
+    if user.sees_all_locations:
         return None
     if not user.location:
         raise ApiError(403, "LOCATION_NOT_ASSIGNED", "Your account has no location, so no balances can be shown")

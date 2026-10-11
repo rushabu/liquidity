@@ -4,7 +4,7 @@ import { API_URL, ApiError, setTokenProvider } from "../api/client";
 export interface Profile {
   id: string;
   email: string | null;
-  role: "support" | "standard";
+  role: "support" | "viewer" | "standard";   // viewer = every location, read-only
   location: string | null;
   scope: string | null;          // "All locations" for support, else the user's location
   can_upload: boolean;

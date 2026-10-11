@@ -65,7 +65,7 @@ def get_ladder(
         "metadata": {
             "as_of_date": as_of.isoformat(), "calculation_date": calc.isoformat(),
             "past_due_policy": past_due_policy, "day_count_basis": 365,
-            "scope_location": None if user.is_support else user.location,
+            "scope_location": None if user.sees_all_locations else user.location,
             "asset_batch": {"id": batches["asset"]["id"], "filename": batches["asset"]["source_filename"],
                             "rows": batches["asset"]["rows_valid"]},
             "liability_batch": {"id": batches["liability"]["id"], "filename": batches["liability"]["source_filename"],

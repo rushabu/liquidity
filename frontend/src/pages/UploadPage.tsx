@@ -68,8 +68,10 @@ export function UploadPage() {
         </div>
       ) : (
         <p className="banner info" role="note">
-          You are signed in as a <b>{user?.location}</b> user: you can view {user?.location} data on every page.
-          Uploading the books is done by a Support user.
+          {user?.role === "viewer"
+            ? <>You are signed in as a <b>Viewer</b>: you can view every location on every page (read-only).</>
+            : <>You are signed in as a <b>{user?.location}</b> user: you can view {user?.location} data on every page.</>}
+          {" "}Uploading the books is done by a Support user.
         </p>
       )}
 

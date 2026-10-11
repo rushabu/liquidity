@@ -1,6 +1,8 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
+const ROLE_LABEL = { support: "Support", viewer: "Viewer", standard: "Standard" } as const;
+
 export function TopBar() {
   const { user, logout } = useAuth();
   return (
@@ -21,7 +23,7 @@ export function TopBar() {
       {user && (
         <div className="userbox">
           <span className="who" title={user.email ?? undefined}>
-            <span className="role-chip" data-role={user.role}>{user.role === "support" ? "Support" : "Standard"}</span>
+            <span className="role-chip" data-role={user.role}>{ROLE_LABEL[user.role]}</span>
             <span className="scope">{user.scope}</span>
           </span>
           <button type="button" className="btn secondary small" onClick={() => logout()}>Sign out</button>

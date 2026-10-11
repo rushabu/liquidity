@@ -76,6 +76,15 @@ it("support users see the upload cards; sign out wipes the session and remembere
   expect(clear).toHaveBeenCalled();
 });
 
+it("a viewer sees all locations but gets the read-only note instead of upload cards", async () => {
+  stubPages();
+  setCurrentSession({ ...session("support", null), user: { id: "v", email: "innoversite@liquidplus.dev", role: "viewer", location: null, scope: "All locations", can_upload: false } });
+  show("/upload");
+  expect(await screen.findByText("Viewer", { selector: ".role-chip" })).toBeInTheDocument();
+  expect(screen.getByText("All locations", { selector: ".scope" })).toBeInTheDocument();
+  expect(screen.getByRole("note")).toHaveTextContent("view every location on every page (read-only)");
+});
+
 it("an expired token (401 from the API) signs the user out with a notice", async () => {
   setCurrentSession(session("support", null));
   vi.stubGlobal("fetch", vi.fn(() => json(401, { error: { code: "UNAUTHORIZED", message: "Invalid token: Signature has expired" } })));

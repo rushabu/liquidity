@@ -46,7 +46,7 @@ def _context(user: CurrentUser, as_of_date: date | None, calc_date: date | None,
     snapshot, batches, rows = bq.fetch_live(engine, user, as_of_date)
     hb, model = bq.get_model(engine, snapshot)
     calc = calc_date or snapshot
-    scope = None if user.is_support else user.location
+    scope = None if user.sees_all_locations else user.location
     shift = round(market_shift_pp, 2)
     key = (batches["asset"]["id"], batches["liability"]["id"], hb["id"], calc, policy, scope, shift)
 
@@ -583,8 +583,8 @@ def export_history(as_of_date: date | None = None, user: CurrentUser = Depends(g
     engine = get_engine()
     hb, m = bq.get_model(engine, as_of_date)
     rows = bq.cached_history(engine, hb["id"])
-    loc = None if user.is_support else user.location
-    if not user.is_support and not loc:
+    loc = None if user.sees_all_locations else user.location
+    if not user.sees_all_locations and not loc:
         raise ApiError(403, "LOCATION_NOT_ASSIGNED", "Your account has no location, so no data can be shown")
     preds = [p for p in bm.predict_history(m, rows) if loc is None or p["location"] == loc]
     for p in preds:

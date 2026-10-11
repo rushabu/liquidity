@@ -14,6 +14,11 @@ from .config import get_settings
 
 _bearer = HTTPBearer(auto_error=False)
 
+# Roles: standard = own location only, read-only · viewer = every location, read-only ·
+# support = every location + uploads (who may upload is configured by UPLOAD_ROLES).
+ROLES = ("standard", "viewer", "support")
+ALL_LOCATION_ROLES = ("viewer", "support")
+
 
 class CurrentUser(BaseModel):
     id: str
@@ -24,6 +29,11 @@ class CurrentUser(BaseModel):
     @property
     def is_support(self) -> bool:
         return self.role == "support"
+
+    @property
+    def sees_all_locations(self) -> bool:
+        """support (all data + uploads) and viewer (all data, read-only) are not tied to one location."""
+        return self.role in ALL_LOCATION_ROLES
 
     @property
     def actor(self) -> str:

@@ -12,7 +12,9 @@ from tests.integration.conftest import auth, upload
 USERS = {  # email -> (password, app_metadata)
     "support@liquidplus.dev": ("pw-support", {"role": "support", "location": None}),
     "singapore@liquidplus.dev": ("pw-sg", {"role": "standard", "location": "Singapore"}),
+    "innoversite@liquidplus.dev": ("pw-view", {"role": "viewer", "location": None}),
     "norole@liquidplus.dev": ("pw-x", {}),
+    "badrole@liquidplus.dev": ("pw-y", {"role": "admin", "location": None}),
 }
 
 
@@ -116,3 +118,23 @@ def test_rbac_standard_user_is_scoped_support_sees_all(client):
     assert everyone == {"Hong Kong", "New York", "London", "Singapore", "Paris"}
     assert client.get("/api/auth/me").status_code == 401
     assert client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-token"}).status_code == 401
+
+
+def test_viewer_sees_every_location_but_cannot_upload(client):
+    s = login(client, "innoversite@liquidplus.dev", "pw-view")
+    assert s.status_code == 200, s.text
+    assert s.json()["user"] | {"id": None} == {"id": None, "email": "innoversite@liquidplus.dev", "role": "viewer",
+                                               "location": None, "scope": "All locations", "can_upload": False}
+    viewer = {"Authorization": f"Bearer {s.json()['access_token']}"}
+    for b in ("asset", "liability"):
+        assert upload(client, b).status_code == 201                                  # support uploads
+    assert upload(client, "historical", headers=viewer).status_code == 403             # viewer cannot
+    ladder = client.get("/api/ladder", headers=viewer).json()
+    assert ladder["metadata"]["scope_location"] is None
+    assert {r["location"] for r in ladder["ladder"]} - {None} == {"Hong Kong", "New York", "London", "Singapore", "Paris"}
+    london = client.get("/api/ladder/transactions", params={"location": "London"}, headers=viewer).json()
+    assert london["total"] > 0
+    w = client.get("/api/whatif", params={"liability_shift_months": -1}, headers=viewer).json()
+    assert w["metadata"]["scope_location"] is None and len(w["metadata"]["locations"]) > 1
+    r = login(client, "badrole@liquidplus.dev", "pw-y")                                 # unknown roles are refused
+    assert r.status_code == 403 and r.json()["error"]["code"] == "NO_ROLE"
